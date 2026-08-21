@@ -21,7 +21,15 @@ test('insights compare a monotonic counter, not the capped transcript length', (
   assert.match(functionBody('pushTranscript'), /transcriptSeq \+= 1/, 'pushTranscript does not advance the counter');
   const run = functionBody('runInsights');
   assert.match(run, /transcriptSeq === insightsLastSeq/, 'the freshness guard is not counter-based');
+  assert.match(run, /transcriptSeq - insightsLastSeq < 4/, 'the four-turn delta guard is missing');
   assert.doesNotMatch(run, /transcript\.length === insights/, 'the capped length is still the guard');
+});
+
+test('insights cost limits remain bounded', () => {
+  assert.match(mainSource, /const INSIGHTS_INTERVAL_MS = 60000/, 'insights interval is too frequent');
+  assert.match(mainSource, /const INSIGHTS_MAX_LINES = 12/, 'insights history is too large');
+  assert.match(mainSource, /const AUTO_SUGGEST_MIN_GAP_MS = 30000/, 'auto-suggest gap is too short');
+  assert.match(functionBody('runInsights'), /maxTokens: 250/, 'insights output cap is missing');
 });
 
 test('a failed insights call hands its turns back to the next tick', () => {

@@ -186,10 +186,9 @@ function buildInterviewContext(settings, mode, transcript) {
 
   const blocks = [];
 
-  // Always include resume if available (but size varies by category)
+  // Always include the stable resume prefix before category-specific context.
   if (hasResume) {
-    const resumeLimit = (category === 'behavioral' || category === 'experience') ? 2400 : 1400;
-    const rb = buildResumeBlock(resume, resumeLimit);
+    const rb = buildResumeBlock(resume, 2400);
     if (rb) blocks.push('=== Your Background ===\n' + rb);
   }
 

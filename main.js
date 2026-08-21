@@ -149,7 +149,7 @@ function getWhisperRuntime() {
 // API call. It never queues — if the user pressed something manually, that wins
 // and the automatic run is simply skipped.
 const AUTO_SUGGEST_QUIET_MS = 2500;   // silence that counts as "they finished"
-const AUTO_SUGGEST_MIN_GAP_MS = 12000; // floor between runs, so a long monologue is not billed per pause
+const AUTO_SUGGEST_MIN_GAP_MS = 30000; // floor between runs, so a long monologue is not billed per pause
 let autoSuggestTimer = null;
 let autoSuggestLastRun = 0;
 
@@ -196,8 +196,8 @@ function recordUsage(usage) {
 // Runs on its own timer and deliberately does NOT touch state.busy: the panel
 // filling in must never block a button the user actually pressed, and a pressed
 // button must never be delayed waiting for the panel.
-const INSIGHTS_INTERVAL_MS = 20000;
-const INSIGHTS_MAX_LINES = 40;
+const INSIGHTS_INTERVAL_MS = 60000;
+const INSIGHTS_MAX_LINES = 12;
 let insightsTimer = null;
 let insightsBusy = false;
 let insightsShown = [];   // every line already on the panel, to avoid repeats
@@ -212,6 +212,7 @@ async function runInsights() {
   if (insightsBusy) return;
   // Nothing new was said, so there is nothing to add and no reason to pay for a call.
   if (transcriptSeq === insightsLastSeq) return;
+  if (transcriptSeq - insightsLastSeq < 4) return;
 
   const settings = store.getSettings();
   if (!settings.autoSuggest) return;
@@ -227,7 +228,7 @@ async function runInsights() {
   try {
     const system = buildInsightsSystem(settings.persona || 'interview');
     const turn = buildInsightsTurn(transcript, insightsShown);
-    const reply = await llm.stream({ system, turns: [{ role: 'user', text: turn }], onToken: () => {}, onUsage: recordUsage });
+    const reply = await llm.stream({ system, turns: [{ role: 'user', text: turn }], maxTokens: 250, onToken: () => {}, onUsage: recordUsage });
     if (generation !== insightsGeneration) return;
     const { insights, actions } = parseInsights(reply);
     const fresh = [...insights, ...actions].filter((line) => !insightsShown.includes(line));

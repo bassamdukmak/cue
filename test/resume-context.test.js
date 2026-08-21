@@ -2,6 +2,7 @@ const test = require('node:test');
 const assert = require('node:assert/strict');
 const { buildResumeContext, parseResume } = require('../src/resume-context');
 const { buildInterviewContext, detectCategory } = require('../src/interview-context');
+const { resolveMode } = require('../src/personas');
 
 // ── buildResumeContext (backward-compat shim) ─────────────────────────────────
 test('buildResumeContext returns a structured prompt block for resume text', () => {
@@ -122,4 +123,12 @@ test('buildInterviewContext: JD tailor note included when JD is set', () => {
   const ctx = buildInterviewContext(fullSettings, 'say', []);
   assert.ok(ctx !== null);
   assert.ok(ctx.includes('Tailor'), 'should include tailor note when JD is set');
+});
+
+test('buildInterviewContext: stable resume prefix survives category flips', () => {
+  const settings = { ...fullSettings, resumeText: 'Candidate ' + 'experience '.repeat(400), jobDescription: '', starStories: '', whyCompany: '', whyLeaving: '', workStyle: '', salaryTarget: '', questionsToAsk: '' };
+  const interview = resolveMode('interview', 'say');
+  const technical = interview.buildSystem(buildInterviewContext(settings, 'say', [{ channel: 'them', text: 'How would you design a distributed cache?' }]), '');
+  const experience = interview.buildSystem(buildInterviewContext(settings, 'say', [{ channel: 'them', text: 'Tell me about your current role.' }]), '');
+  assert.equal(technical, experience);
 });

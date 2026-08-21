@@ -291,6 +291,7 @@ test('insights are told not to repeat what is already shown', () => {
   const turn = buildInsightsTurn([{ channel: 'them', text: 'hello' }], ['Already known thing']);
   assert.match(turn, /do not repeat/i);
   assert.match(turn, /Already known thing/);
+  assert.ok(turn.indexOf('Conversation:') < turn.indexOf('Already on the panel'));
 });
 
 test('each persona watches for something different', () => {

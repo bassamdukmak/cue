@@ -60,8 +60,8 @@ function buildInsightsTurn(transcript, existing) {
   const known = existing.length
     ? 'Already on the panel — do not repeat these:\n' + existing.map((line) => '- ' + line).join('\n')
     : 'The panel is empty so far.';
-  return known
-    + '\n\nConversation:\n' + (formatTranscript(transcript, 24) || '(nothing yet)')
+  return 'Conversation:\n' + (formatTranscript(transcript, 24) || '(nothing yet)')
+    + '\n\n' + known
     + '\n\nWhat is new?';
 }
 
