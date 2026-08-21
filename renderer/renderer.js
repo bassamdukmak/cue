@@ -1707,21 +1707,27 @@
   }
 
   const modeMenu = $('#mode-menu');
-  const closeModeMenu = () => { if (modeMenu) modeMenu.classList.remove('open'); };
+  const closeModeMenu = () => {
+    if (!modeMenu) return;
+    modeMenu.classList.remove('open');
+    modeMenu.querySelector('.has-sub')?.classList.remove('submenu-open');
+  };
   if (modeMenu) {
     $('#mode-trigger').addEventListener('click', () => {
-      modeMenu.classList.toggle('open');
+      if (modeMenu.classList.contains('open')) closeModeMenu();
+      else modeMenu.classList.add('open');
     });
 
-    modeMenu.querySelectorAll('.mode-item').forEach((item) => item.addEventListener('click', () => {
+    modeMenu.querySelectorAll('.mode-item:not(.has-sub)').forEach((item) => item.addEventListener('click', () => {
       setPersona(item.dataset.persona, null);
       closeModeMenu();
     }));
-    modeMenu.querySelectorAll('.sub-item').forEach((item) => item.addEventListener('click', (event) => {
-      event.stopPropagation();
-      setPersona('attack', Number(item.dataset.aggression));
-      closeModeMenu();
-    }));
+
+    const factCheck = modeMenu.querySelector('.mode-item.has-sub');
+    factCheck?.addEventListener('click', () => {
+      setPersona('attack', null);
+      factCheck.classList.toggle('submenu-open');
+    });
 
     const aggressionRange = $('#aggression-range');
     if (aggressionRange) {
@@ -1729,6 +1735,7 @@
       // the track does not write five settings updates.
       aggressionRange.addEventListener('input', (event) => {
         event.stopPropagation();
+        factCheck?.classList.add('submenu-open');
         renderAggression(Number(aggressionRange.value));
       });
       aggressionRange.addEventListener('change', (event) => {

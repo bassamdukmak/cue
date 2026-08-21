@@ -59,6 +59,8 @@ let sttDisabled = false; // set when the key can't reach any speech model (stops
 const buffers = { you: [], them: [] };
 const transcript = []; // { channel, text, ts } — capped at MAX_TRANSCRIPT_TURNS
 const MAX_TRANSCRIPT_TURNS = 200; // ~30–40 minutes of conversation at normal pace
+const EMPTY_TRANSCRIPT_STATUS_MS = 15000;
+const EMPTY_TRANSCRIPT_MESSAGE = 'Nothing heard yet. Check the status line — if it says Microphone unavailable or Meeting audio off, that is why. Local speech-to-text also needs a model in Settings > Audio.';
 // Counts every turn ever pushed. transcript.length stops growing at the cap, so
 // only this can tell "something new was said" apart from "still 200 turns".
 let transcriptSeq = 0;
@@ -67,6 +69,7 @@ const STREAM_INACTIVITY_MS = 25000; // abort a stalled LLM stream so state.busy 
 const MIN_BYTES = Math.floor(16000 * 2 * 0.12); // ~0.12s
 const RMS_GATE = 180;
 let flushTimer = null;
+let emptyTranscriptTimer = null;
 let whisperModelManager = null;
 let localWhisperTranscriber = null;
 let activeWhisperModelId = null;
@@ -105,9 +108,26 @@ function pushTranscript(turn) {
   transcript.push(turn);
   transcriptSeq += 1;
   if (transcript.length > MAX_TRANSCRIPT_TURNS) transcript.splice(0, transcript.length - MAX_TRANSCRIPT_TURNS);
+  clearEmptyTranscriptStatus();
 }
 
 function send(channel, data) { if (win && !win.isDestroyed()) win.webContents.send(channel, data); }
+
+function clearEmptyTranscriptStatus() {
+  clearTimeout(emptyTranscriptTimer);
+  emptyTranscriptTimer = null;
+  send('status', { message: '', persistent: true, key: 'empty-transcript' });
+}
+
+function scheduleEmptyTranscriptStatus() {
+  clearEmptyTranscriptStatus();
+  if (!state.capturing || transcript.length) return;
+  emptyTranscriptTimer = setTimeout(() => {
+    if (state.capturing && transcript.length === 0) {
+      send('status', { message: EMPTY_TRANSCRIPT_MESSAGE, persistent: true, key: 'empty-transcript' });
+    }
+  }, EMPTY_TRANSCRIPT_STATUS_MS);
+}
 
 function getWhisperRuntime() {
   return locateWhisperRuntime({
@@ -141,6 +161,7 @@ function scheduleAutoSuggest() {
     if (state.busy) return;
     if (Date.now() - autoSuggestLastRun < AUTO_SUGGEST_MIN_GAP_MS) return;
     if (!store.getSettings().autoSuggest) return;
+    if (!transcript.length) return;
     autoSuggestLastRun = Date.now();
     runFeature('say', '');
   }, AUTO_SUGGEST_QUIET_MS);
@@ -602,6 +623,7 @@ async function setCapturing(active) {
         state.capturing = true;
         console.log('[cue] capture started, mode: local');
         send('capture:state', { active: true, streaming: false, mode: 'local' });
+        scheduleEmptyTranscriptStatus();
         return true;
       } catch (error) {
         state.capturing = false;
@@ -626,10 +648,12 @@ async function setCapturing(active) {
     }
     console.log('[cue] capture started, mode:', streaming ? 'streaming' : 'batch');
     send('capture:state', { active: true, streaming: streamingMode, mode: streaming ? 'streaming' : 'batch' });
+    scheduleEmptyTranscriptStatus();
     return true;
   }
 
   state.capturing = false;
+  clearEmptyTranscriptStatus();
   stopFlushLoop();
   stopStreamingSTT();
   buffers.you = []; buffers.them = [];
@@ -670,6 +694,10 @@ function assemblePersonaContext(contextBlock, settings) {
 }
 
 // -------- feature runner --------
+function modeNeedsTranscript(mode) {
+  return mode === 'say' || mode === 'followup' || mode === 'recap';
+}
+
 async function runFeature(mode, userText) {
   if (state.busy) return;
   // Persona decides which prompt table backs this mode; interview returns the
@@ -677,6 +705,12 @@ async function runFeature(mode, userText) {
   const persona = store.getSettings().persona;
   const def = resolveMode(persona, mode);
   if (!def) return;
+  if (transcript.length === 0 && modeNeedsTranscript(mode)) {
+    send('llm:start', { userBubble: def.userBubble, small: !!def.small, category: null });
+    send('llm:token', { text: EMPTY_TRANSCRIPT_MESSAGE });
+    send('llm:done', {});
+    return;
+  }
   state.busy = true;
   let streamSettled = false; // drop stray tokens from a stream we've already abandoned
   try {
@@ -864,6 +898,7 @@ ipcMain.handle('platform:info', () => ({
 ipcMain.handle('transcript:clear', () => {
   transcript.splice(0, transcript.length);
   resetInsights();
+  scheduleEmptyTranscriptStatus();
   return { ok: true };
 });
 ipcMain.on('ask', (_e, payload) => runFeature(payload.mode, payload.text));

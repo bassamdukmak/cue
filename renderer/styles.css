@@ -53,15 +53,16 @@ html, body {
   pointer-events: none;                  /* only the actual UI blocks; gaps pass through */
 }
 #toolbar, #panel-wrap, #settings-scrim, #onboard-scrim, #consent-scrim { pointer-events: auto; }
-#toolbar { -webkit-app-region: drag; }   /* drag the top pill to move the window */
-#panel-wrap, #panel, #messages, #action-row, #composer, #input, textarea, button, .act, .smart-pill, .more-btn, #send-btn, .s-close, .s-seg button, .ob-buttons button, .ob-ghost, .ob-primary, .mode-menu, .mode-trigger, .mode-list, .mode-item, .sub-list, #aggression-range, .insights-panel, .ip-close-btn { -webkit-app-region: no-drag; }
+#toolbar, #panel-wrap, #panel { -webkit-app-region: drag; }
+#messages, #action-row, #composer, #input, textarea, button, input, select, [contenteditable], #mode-menu, #goal-popover, #insights-panel, #transcript-sidebar, #settings, #onboard, #consent { -webkit-app-region: no-drag; }
 
 /* ============================ Toolbar pill ============================ */
 #toolbar {
   display: inline-flex;
   align-items: center;
   gap: 4px;
-  padding: 5px 6px;
+  min-height: 46px;
+  padding: 8px 10px;
   border-radius: var(--r-pill);
   background: rgba(28,30,38,0.85);
   border: 1px solid rgba(255,255,255,0.14);
@@ -928,7 +929,7 @@ button:focus { outline: none; }
   box-shadow: 0 12px 32px rgba(0,0,0,0.45);
   backdrop-filter: blur(20px);
 }
-.mode-item.has-sub:hover .sub-list, .sub-list:hover { display: flex; }
+.mode-item.has-sub.submenu-open .sub-list { display: flex; }
 
 .agg-head { display: flex; flex-direction: column; gap: 1px; margin-bottom: 10px; }
 .agg-name { font-size: 13px; font-weight: 600; color: #7FB0F9; }
