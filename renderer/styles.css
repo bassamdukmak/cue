@@ -54,7 +54,7 @@ html, body {
 }
 #toolbar, #panel-wrap, #settings-scrim, #onboard-scrim, #consent-scrim { pointer-events: auto; }
 #toolbar { -webkit-app-region: drag; }   /* drag the top pill to move the window */
-#panel-wrap, #panel, #messages, #action-row, #composer, #input, textarea, button, .act, .smart-pill, .more-btn, #send-btn, .s-close, .s-seg button, .ob-buttons button, .ob-ghost, .ob-primary { -webkit-app-region: no-drag; }
+#panel-wrap, #panel, #messages, #action-row, #composer, #input, textarea, button, .act, .smart-pill, .more-btn, #send-btn, .s-close, .s-seg button, .ob-buttons button, .ob-ghost, .ob-primary, .mode-menu, .mode-trigger, .mode-list, .mode-item, .sub-list, #aggression-range { -webkit-app-region: no-drag; }
 
 /* ============================ Toolbar pill ============================ */
 #toolbar {
@@ -850,3 +850,120 @@ button:focus { outline: none; }
 .cs-title { font-size: 15px; font-weight: 620; color: var(--tx-1); line-height: 1.35; }
 .cs-body { margin-top: 10px; color: var(--tx-mut); font-size: 12.5px; line-height: 1.5; white-space: pre-line; }
 .cs-actions { display: flex; gap: 10px; justify-content: center; margin-top: 18px; }
+
+/* The single line the user is meant to say out loud. Deliberately the loudest
+   thing in the panel — during a live meeting it has to be findable at a glance. */
+.say-line {
+  margin: 8px 0;
+  padding: 10px 12px;
+  border-left: 3px solid var(--accent, #3c83f5);
+  border-radius: 6px;
+  background: rgba(60,131,245,0.14);
+  font-size: 21px;
+  font-weight: 600;
+  line-height: 1.45;
+  color: #fff;
+}
+
+/* ==================== Mode menu (overlay, hover-opened) ==================== */
+/* Opens upward: it sits at the bottom of the panel, and a downward menu would
+   fall outside the window. Hover rather than click, so switching mode mid-
+   sentence costs no clicks. */
+.mode-menu { position: relative; display: inline-flex; }
+
+.mode-trigger {
+  display: inline-flex; align-items: center; gap: 6px;
+  padding: 5px 11px; border-radius: var(--r-pill);
+  border: 1px solid rgba(255,255,255,0.18); background: rgba(255,255,255,0.05);
+  color: var(--tx-2); font-size: 13px; font-weight: 500; font-family: var(--font);
+  cursor: pointer; transition: all 140ms ease; white-space: nowrap;
+}
+.mode-trigger:hover { background: rgba(255,255,255,0.09); }
+.mode-chev { font-size: 9px; opacity: 0.7; }
+/* Any non-default posture is visually loud — nobody should challenge a room
+   while believing they are still in interview mode. */
+.mode-menu.active-persona .mode-trigger {
+  border-color: rgba(60,131,245,0.5); color: #7FB0F9; background: rgba(60,131,245,0.10);
+}
+
+.mode-list {
+  position: absolute; bottom: 100%; left: 0; margin-bottom: 6px;
+  display: none; flex-direction: column; min-width: 232px; z-index: 50;
+  padding: 5px; border-radius: 12px;
+  border: 1px solid rgba(255,255,255,0.14);
+  background: rgba(28,28,30,0.97);
+  box-shadow: 0 12px 32px rgba(0,0,0,0.45);
+  backdrop-filter: blur(20px);
+}
+.mode-menu:hover .mode-list { display: flex; }
+/* Bridges the gap above the trigger so the menu does not flicker shut on the
+   way to it. */
+.mode-menu::after {
+  content: ''; position: absolute; bottom: 100%; left: 0; right: 0; height: 8px;
+}
+
+.mode-item {
+  position: relative; display: flex; align-items: baseline; gap: 8px;
+  width: 100%; padding: 7px 10px; border: 0; border-radius: 8px;
+  background: transparent; color: var(--tx-1); cursor: pointer;
+  font-family: var(--font); font-size: 13px; text-align: left;
+}
+.mode-item:hover { background: rgba(255,255,255,0.08); }
+.mode-item.on { color: #7FB0F9; }
+.mode-item.on .mode-name::after { content: ' \2713'; }
+.mode-name { font-weight: 600; white-space: nowrap; }
+.mode-hint { color: var(--tx-2); font-size: 11px; flex: 1; white-space: nowrap; }
+.mode-arrow { color: var(--tx-2); font-size: 14px; }
+
+/* ---- Aggression slider, hanging off Fact-check ---- */
+.sub-list {
+  position: absolute; left: 100%; bottom: -5px; margin-left: 4px;
+  display: none; flex-direction: column;
+  padding: 12px 14px 10px; min-width: 244px; border-radius: 12px;
+  border: 1px solid rgba(255,255,255,0.14);
+  background: rgba(28,28,30,0.97);
+  box-shadow: 0 12px 32px rgba(0,0,0,0.45);
+  backdrop-filter: blur(20px);
+}
+.mode-item.has-sub:hover .sub-list, .sub-list:hover { display: flex; }
+
+.agg-head { display: flex; flex-direction: column; gap: 1px; margin-bottom: 10px; }
+.agg-name { font-size: 13px; font-weight: 600; color: #7FB0F9; }
+.agg-desc { font-size: 11px; color: var(--tx-2); }
+
+.agg-slider { position: relative; display: block; height: 30px; }
+.agg-track {
+  position: absolute; inset: 0; border-radius: 999px;
+  background: rgba(255,255,255,0.10); overflow: hidden;
+}
+.agg-fill {
+  position: absolute; left: 0; top: 0; bottom: 0;
+  border-radius: 999px; background: #3C83F5;
+  transition: width 120ms ease;
+}
+/* Notch markers, one per level, so the steps are visible at rest. */
+.agg-dots {
+  position: absolute; inset: 0; display: flex; align-items: center;
+  justify-content: space-between; padding: 0 13px; pointer-events: none;
+}
+.agg-dots i { width: 4px; height: 4px; border-radius: 50%; background: rgba(255,255,255,0.5); }
+
+/* The real input sits on top, invisible except for its thumb, so dragging,
+   clicking and arrow keys all come from the platform rather than mouse maths. */
+#aggression-range {
+  position: absolute; inset: 0; width: 100%; height: 30px; margin: 0;
+  appearance: none; -webkit-appearance: none; background: transparent; outline: none;
+  cursor: pointer;
+}
+#aggression-range::-webkit-slider-runnable-track { height: 30px; background: transparent; }
+#aggression-range::-webkit-slider-thumb {
+  -webkit-appearance: none; appearance: none;
+  width: 26px; height: 26px; margin-top: 2px;
+  border-radius: 50%; background: #fff; border: 0;
+  box-shadow: 0 1px 4px rgba(0,0,0,0.45);
+}
+
+.agg-ends {
+  display: flex; justify-content: space-between; margin-top: 7px;
+  font-size: 10.5px; color: var(--tx-2);
+}

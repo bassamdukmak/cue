@@ -21,6 +21,14 @@ module.exports = async function afterPack(context) {
   const architecture = typeof context.arch === 'number' ? Arch[context.arch] : context.arch;
   if (!platform || !architecture) throw new Error('electron-builder did not provide a runtime target.');
 
-  const outputDirectory = path.join(context.appOutDir, 'resources', 'whisper-runtime');
+  // Resources live in different places per platform: appOutDir/resources on
+  // Windows and Linux, but appOutDir/<Product>.app/Contents/Resources on macOS.
+  // electron-builder resolves that difference for us; hardcoding the former put
+  // the runtime next to the bundle instead of inside it, so the packaged macOS
+  // app never found local whisper at all.
+  const resourcesDirectory = typeof context.packager.getResourcesDir === 'function'
+    ? context.packager.getResourcesDir(context.appOutDir)
+    : path.join(context.appOutDir, 'resources');
+  const outputDirectory = path.join(resourcesDirectory, 'whisper-runtime');
   await prepareWhisperRuntime({ platform, architecture, outputDirectory });
 };

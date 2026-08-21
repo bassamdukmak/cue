@@ -105,13 +105,22 @@ function stripDataUrl(dataUrl) {
   return m ? { mime: m[1], b64: m[2] } : null;
 }
 
+// Text-only OpenAI-compatible endpoints (DeepSeek among them) reject the
+// image_url content part outright, so a screenshot would fail the whole request
+// rather than simply being ignored. Drop the image and answer from the
+// transcript instead — a degraded answer beats an error mid-meeting.
+function modelSupportsVision(model) {
+  return !/deepseek|qwen-?turbo|^text-|moonshot-v1-(8|32|128)k$/i.test(String(model || ''));
+}
+
 async function streamOpenAI({ apiKey, baseURL, model, system, turns, imageDataUrl, maxTokens, onToken }) {
+  const supportsVision = modelSupportsVision(model);
   const OpenAI = require('openai');
   const client = new OpenAI(baseURL ? { apiKey, baseURL } : { apiKey });
   const messages = [{ role: 'system', content: system }];
   turns.forEach((t, i) => {
     const last = i === turns.length - 1;
-    if (last && imageDataUrl && t.role === 'user') {
+    if (last && imageDataUrl && supportsVision && t.role === 'user') {
       messages.push({
         role: 'user', content: [
           { type: 'text', text: t.text },
@@ -356,4 +365,4 @@ function createLLM(settings) {
   };
 }
 
-module.exports = { createLLM, formatProviderErrorMessage, isQuotaError, CURRENT_GEMINI_DEFAULT };
+module.exports = { modelSupportsVision, createLLM, formatProviderErrorMessage, isQuotaError, CURRENT_GEMINI_DEFAULT };

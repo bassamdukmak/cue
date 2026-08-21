@@ -39,6 +39,17 @@ const DEFAULTS = {
   // points", "casual tone". Applied to every LLM mode EXCEPT LeetCode (kept
   // strict for coding problems).
   aiRules: '',
+  // Tab 6: Meeting — the attack persona (live fact-checking)
+  // 'interview' keeps every original prompt; 'attack' swaps the six
+  // conversational modes for claim-challenging ones.
+  autoSuggest: false,    // suggest automatically when the other side stops talking
+  persona: 'interview',
+  aggression: 2,         // 1 = soften and hedge … 5 = flat correction
+  roster: '',            // one per line: "Name | ally|neutral|target | notes"
+  documents: [],         // [{ name, text, chars }] reference files for fact-checking
+  negotiationFloor: '',  // walk-away point — never revealed, never conceded past
+  negotiationNotes: '',  // other priorities: start date, equity, scope, timeline
+
   // Window position
   windowX: null,
   windowY: null,

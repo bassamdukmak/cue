@@ -91,10 +91,42 @@
     }
   }
 
+  // Fact-check replies tag each line so the one sentence meant to be spoken can be
+  // set apart from the reasoning around it — mid-meeting there is no time to work
+  // out which half of a paragraph to read aloud. Replies with no prefixes (every
+  // interview mode) fall straight through to plain markdown.
+  const CHANNEL_PREFIX = /^(SAY|NOTE):\s*/;
+
+  function renderChannels(raw) {
+    const lines = raw.split('\n');
+    if (!lines.some((line) => CHANNEL_PREFIX.test(line.trim()))) return renderMarkdown(raw);
+
+    let html = '';
+    let prose = [];
+    const flushProse = () => {
+      if (prose.length) { html += renderMarkdown(prose.join('\n')); prose = []; }
+    };
+
+    for (const line of lines) {
+      const trimmed = line.trim();
+      const match = trimmed.match(CHANNEL_PREFIX);
+      if (match && match[1] === 'SAY') {
+        flushProse();
+        html += '<div class="say-line">' + esc(trimmed.replace(CHANNEL_PREFIX, '')) + '</div>';
+      } else if (match) {
+        prose.push(trimmed.replace(CHANNEL_PREFIX, ''));
+      } else {
+        prose.push(line);
+      }
+    }
+    flushProse();
+    return html;
+  }
+
   function finalizeAi() {
     if (!aiEl) return;
     const raw = aiEl.dataset.raw || '';
-    aiEl.innerHTML = renderMarkdown(raw);
+    aiEl.innerHTML = renderChannels(raw);
     aiEl = null; caretEl = null;
   }
 
@@ -548,6 +580,18 @@
     settings.smart = !settings.smart;
     smartBtn.classList.toggle('on', settings.smart);
     await cue.settingsSet({ smart: settings.smart });
+  });
+
+  // Auto-suggest toggle. Every automatic run is a real API call, so the status
+  // line says plainly that it is now spending money without being asked.
+  const autoBtn = $('#auto-toggle');
+  autoBtn.addEventListener('click', async () => {
+    settings.autoSuggest = !settings.autoSuggest;
+    autoBtn.classList.toggle('on', settings.autoSuggest);
+    await cue.settingsSet({ autoSuggest: settings.autoSuggest });
+    showStatus(settings.autoSuggest
+      ? 'Auto on — suggesting whenever they pause. Each one is an API call.'
+      : 'Auto off — suggestions only when you press a button.');
   });
 
   // Hide / collapse
@@ -1290,6 +1334,12 @@
     $('#work-style').value = settings.workStyle || '';
     // Style tab
     $('#ai-rules').value = settings.aiRules || '';
+    $('#roster').value = settings.roster || '';
+    $('#negotiation-floor').value = settings.negotiationFloor || '';
+    $('#negotiation-notes').value = settings.negotiationNotes || '';
+    renderDocumentsSummary();
+    document.querySelectorAll('#persona-seg button').forEach((b) => b.classList.toggle('on', b.dataset.persona === (settings.persona || 'interview')));
+    document.querySelectorAll('#aggression-seg button').forEach((b) => b.classList.toggle('on', Number(b.dataset.aggression) === (settings.aggression || 2)));
     updateAiRulesCounter();
     // Q&A tab
     $('#salary-target').value = settings.salaryTarget || '';
@@ -1340,6 +1390,31 @@
     $('#resume-text').value = res.text || '';
     showStatus('Imported ' + res.fileName + ' — press Save to keep it.');
   });
+  function renderDocumentsSummary() {
+    const documents = settings.documents || [];
+    const total = documents.reduce((sum, doc) => sum + (doc.chars || 0), 0);
+    $('#documents-summary').textContent = documents.length
+      ? `${documents.length} loaded (${Math.round(total / 1000)}k chars): ${documents.map((d) => d.name).join(', ')}`
+      : 'None loaded';
+  }
+
+  const addDocumentsBtn = document.getElementById('add-documents-btn');
+  if (addDocumentsBtn) addDocumentsBtn.addEventListener('click', async () => {
+    const res = await cue.pickDocuments();
+    if (!res || res.canceled) return;
+    settings.documents = (settings.documents || []).concat(res.documents || []);
+    renderDocumentsSummary();
+    if (res.failed && res.failed.length) showStatus('Could not read: ' + res.failed.join('; '));
+    else showStatus(`Added ${res.documents.length} document(s) — press Save to keep them.`);
+  });
+
+  const clearDocumentsBtn = document.getElementById('clear-documents-btn');
+  if (clearDocumentsBtn) clearDocumentsBtn.addEventListener('click', () => {
+    settings.documents = [];
+    renderDocumentsSummary();
+    showStatus('Documents cleared — press Save to keep the change.');
+  });
+
   const uploadJdBtn = document.getElementById('upload-jd-btn');
   if (uploadJdBtn) uploadJdBtn.addEventListener('click', async () => {
     const res = await cue.pickProfileDocument();
@@ -1380,6 +1455,106 @@
     settings.minimaxRegion = b.dataset.region;
     document.querySelectorAll('#minimax-region-seg button').forEach((x) => x.classList.toggle('on', x === b));
   }));
+
+  // Persona and aggression live on the overlay because they are decided
+  // mid-meeting. Like #smart-toggle they save immediately rather than waiting
+  // for the Settings Save button.
+  const PERSONA_LABELS = {
+    interview: 'Interview', attack: 'Fact-check', negotiation: 'Negotiation',
+    decode: 'Decode', standup: 'Standup',
+  };
+
+  // Button wording follows the persona: "Follow-up" means something different
+  // when challenging a claim than when answering an interviewer. Presentation
+  // only — the buttons keep sending the same mode strings.
+  const PERSONA_BUTTON_LABELS = {
+    interview: { say: 'What should I say?', assist: 'Assist', followup: 'Follow-up', recap: 'Recap' },
+    attack: { say: 'Challenge', assist: 'Check screen', followup: 'Probe', recap: 'Patterns' },
+    negotiation: { say: 'What do I say?', assist: 'Where I stand', followup: 'Press', recap: 'Ledger' },
+    decode: { say: 'What does that mean?', assist: 'Read screen', followup: 'How to ask', recap: 'Glossary' },
+    standup: { say: 'My update', assist: 'What to flag', followup: 'What to ask', recap: 'Commitments' },
+  };
+
+  const AGGRESSION_LABELS = { 1: 'Gentle', 2: 'Curious', 3: 'Direct', 4: 'Pointed', 5: 'Blunt' };
+
+  function syncPersonaUI() {
+    const persona = settings.persona || 'interview';
+    const aggression = settings.aggression || 2;
+    const menu = $('#mode-menu');
+    if (!menu) return;
+
+    // Fact-check carries its stance in the label — "Fact-check" alone does not
+    // say whether the next suggestion will hedge or flatly contradict someone.
+    $('#mode-trigger-label').textContent = persona === 'attack'
+      ? PERSONA_LABELS[persona] + ' · ' + AGGRESSION_LABELS[aggression]
+      : PERSONA_LABELS[persona];
+    menu.classList.toggle('active-persona', persona !== 'interview');
+
+    menu.querySelectorAll('.mode-item').forEach((item) => item.classList.toggle('on', item.dataset.persona === persona));
+    renderAggression(aggression);
+
+    applyPersonaButtonLabels(persona);
+    // Keep the Settings tab in step in case it is open behind the overlay.
+    document.querySelectorAll('#persona-seg button').forEach((b) => b.classList.toggle('on', b.dataset.persona === persona));
+    document.querySelectorAll('#aggression-seg button').forEach((b) => b.classList.toggle('on', Number(b.dataset.aggression) === aggression));
+  }
+
+  function setPersona(persona, aggression) {
+    settings.persona = persona;
+    const patch = { persona };
+    if (aggression) {
+      settings.aggression = aggression;
+      patch.aggression = aggression;
+    }
+    cue.settingsSet(patch);
+    syncPersonaUI();
+    showStatus(PERSONA_LABELS[persona] + (persona === 'attack' ? ' · ' + AGGRESSION_LABELS[settings.aggression] : '') + ' mode');
+  }
+
+  const AGGRESSION_DESC = {
+    1: 'frame it as my own doubt',
+    2: 'just ask for the source',
+    3: 'say plainly I disagree',
+    4: 'name the gap in their logic',
+    5: 'flat correction',
+  };
+
+  // Paints the slider's blue fill and labels. The <input type=range> supplies the
+  // thumb, dragging and arrow-key support; only the fill width is ours to draw.
+  function renderAggression(level) {
+    const range = $('#aggression-range');
+    if (!range) return;
+    range.value = String(level);
+    // Thumb centre travels between half a thumb-width from each end, so the fill
+    // has to follow the same inset or it drifts away from the thumb at the edges.
+    const fraction = (level - 1) / 4;
+    $('#agg-fill').style.width = `calc(13px + ${fraction} * (100% - 26px))`;
+    $('#agg-name').textContent = AGGRESSION_LABELS[level];
+    $('#agg-desc').textContent = AGGRESSION_DESC[level];
+  }
+
+  const modeMenu = $('#mode-menu');
+  if (modeMenu) {
+    modeMenu.querySelectorAll('.mode-item').forEach((item) => item.addEventListener('click', () => {
+      setPersona(item.dataset.persona, null);
+    }));
+
+    const aggressionRange = $('#aggression-range');
+    if (aggressionRange) {
+      // Live feedback while dragging; only commit on release, so a drag across
+      // the track does not write five settings updates.
+      aggressionRange.addEventListener('input', (event) => {
+        event.stopPropagation();
+        renderAggression(Number(aggressionRange.value));
+      });
+      aggressionRange.addEventListener('change', (event) => {
+        event.stopPropagation();
+        setPersona('attack', Number(aggressionRange.value));
+      });
+      // Clicking the track must not also fire the parent Fact-check row.
+      aggressionRange.addEventListener('click', (event) => event.stopPropagation());
+    }
+  }
 
   document.querySelectorAll('#stt-provider-seg button').forEach((button) => button.addEventListener('click', () => {
     settings.sttProvider = button.dataset.sttProvider;
@@ -1560,6 +1735,9 @@
     settings.workStyle = $('#work-style').value.trim();
     // Style tab
     settings.aiRules = $('#ai-rules').value.trim();
+    settings.roster = $('#roster').value.trim();
+    settings.negotiationFloor = $('#negotiation-floor').value.trim();
+    settings.negotiationNotes = $('#negotiation-notes').value.trim();
     // Q&A
     settings.salaryTarget = $('#salary-target').value.trim();
     settings.questionsToAsk = $('#questions-to-ask').value.trim();
@@ -1713,6 +1891,8 @@
   // ---- boot --------------------------------------------------------------
   (async function boot() {
     settings = await cue.settingsGet();
+    syncPersonaUI();
+    $('#auto-toggle').classList.toggle('on', !!settings.autoSuggest);
     const platformInfo = await cue.platformInfo();
 
     // R4: shortcut hints

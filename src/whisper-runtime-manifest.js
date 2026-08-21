@@ -8,7 +8,11 @@ const SOURCE_ARCHIVE_URL = `https://github.com/ggml-org/whisper.cpp/archive/refs
 // upstream release change. If the macOS source build starts failing with
 // "Artifact checksum verification failed", that is why. The Windows/Linux
 // targets use release assets instead and do not have this problem.
-const SOURCE_ARCHIVE_SHA256 = 'e684d836a67616c0d51c9239245a46ee6a7203258b2b3354e456af5039482d13';
+// Re-pinned 2026-08-21 after GitHub recompressed the archive. Authenticity was
+// confirmed independently of this hash: the zip's embedded commit
+// f049fff95a089aa9969deb009cdd4892b3e74916 matches what the upstream v1.9.1 tag
+// points to, so the source is identical and only the compression changed.
+const SOURCE_ARCHIVE_SHA256 = '98a57a88ef0e733b746544f8ea25157d3265fbf0dac5c32dbb527e6ef4dbfaac';
 
 const RUNTIME_TARGETS = Object.freeze({
   'win32-x64': Object.freeze({

@@ -39,19 +39,19 @@
             <div id="action-row">
               <button class="act act-primary" data-mode="say"
                 title="Suggests what to say next based on the conversation">
-                <span class="ic"></span><span>What should I say?</span>
+                <span class="ic"></span><span class="lbl">What should I say?</span>
                 <span class="shortcut-hint" id="say-shortcut-hint"></span>
               </button>
               <span class="sep">•</span>
               <button class="act act-secondary" data-mode="assist"
                 title="Scans your screen and conversation to decide what you need">
-                <span class="ic"></span><span>Assist</span>
+                <span class="ic"></span><span class="lbl">Assist</span>
                 <span class="shortcut-hint" id="assist-shortcut-hint"></span>
               </button>
               <span class="sep">•</span>
-              <button class="act" data-mode="followup"><span class="ic"></span><span>Follow-up</span></button>
+              <button class="act" data-mode="followup"><span class="ic"></span><span class="lbl">Follow-up</span></button>
               <span class="sep">•</span>
-              <button class="act" data-mode="recap"><span class="ic"></span><span>Recap</span></button>
+              <button class="act" data-mode="recap"><span class="ic"></span><span class="lbl">Recap</span></button>
             </div>
 
             <div id="composer">
@@ -60,6 +60,44 @@
                 <textarea id="input" rows="1" spellcheck="false"></textarea>
               </div>
               <div id="composer-bottom">
+                <div id="mode-menu" class="mode-menu">
+                  <button id="mode-trigger" class="mode-trigger" title="What cue is helping you do">
+                    <span id="mode-trigger-label">Interview</span><span class="mode-chev">▾</span>
+                  </button>
+                  <div class="mode-list">
+                    <button class="mode-item" data-persona="interview">
+                      <span class="mode-name">Interview</span><span class="mode-hint">Help me answer well</span>
+                    </button>
+                    <button class="mode-item has-sub" data-persona="attack">
+                      <span class="mode-name">Fact-check</span><span class="mode-hint">Challenge what they claim</span>
+                      <span class="mode-arrow">›</span>
+                      <span class="sub-list">
+                        <span class="agg-head">
+                          <span class="agg-name" id="agg-name">Curious</span>
+                          <span class="agg-desc" id="agg-desc">just ask for the source</span>
+                        </span>
+                        <span class="agg-slider">
+                          <span class="agg-track"><span class="agg-fill" id="agg-fill"></span></span>
+                          <span class="agg-dots">
+                            <i></i><i></i><i></i><i></i><i></i>
+                          </span>
+                          <input type="range" id="aggression-range" min="1" max="5" step="1" value="2" />
+                        </span>
+                        <span class="agg-ends"><span>Gentle</span><span>Blunt</span></span>
+                      </span>
+                    </button>
+                    <button class="mode-item" data-persona="negotiation">
+                      <span class="mode-name">Negotiation</span><span class="mode-hint">Salary, vendors, contracts</span>
+                    </button>
+                    <button class="mode-item" data-persona="decode">
+                      <span class="mode-name">Decode</span><span class="mode-hint">Explain what they just said</span>
+                    </button>
+                    <button class="mode-item" data-persona="standup">
+                      <span class="mode-name">Standup</span><span class="mode-hint">Track what I commit to</span>
+                    </button>
+                  </div>
+                </div>
+                <button id="auto-toggle" class="smart-pill" title="Suggest automatically when the other side stops talking"><span>Auto</span></button>
                 <button id="smart-toggle" class="smart-pill"><span class="ic"></span><span>Smart</span></button>
                 <button id="history-btn" class="history-btn" title="View conversation history"><span class="ic"></span></button>
                 <button id="more-btn" class="more-btn" title="Settings"></button>
@@ -111,6 +149,7 @@
         <button class="s-tab" data-tab="prep">🎯 Interview Prep</button>
         <button class="s-tab" data-tab="style">✨ Style</button>
         <button class="s-tab" data-tab="qa">💬 Q&amp;A</button>
+        <button class="s-tab" data-tab="meeting">🎯 Meeting</button>
       </div>
 
       <!-- Tab: Keys -->
@@ -132,7 +171,7 @@
         <div class="s-field"><span>Anthropic</span><input id="key-anthropic" type="password" placeholder="sk-ant-..." autocomplete="off" /></div>
         <div class="s-field"><span>Gemini</span><input id="key-gemini" type="password" placeholder="AIza..." autocomplete="off" /></div>
         <div class="s-field"><span>Deepgram</span><input id="key-deepgram" type="password" placeholder="dg-..." autocomplete="off" /></div>
-        <div class="s-field"><span>Custom</span><input id="key-custom" type="password" placeholder="optional" autocomplete="off" /></div>
+        <div class="s-field"><span>Custom</span><input id="key-custom" type="password" placeholder="required for DeepSeek etc · optional only for a local server" autocomplete="off" /></div>
         <div class="s-field"><span>MiniMax</span><input id="key-minimax" type="password" placeholder="MiniMax API key" autocomplete="off" /></div>
 
         <label class="s-label">MiniMax region <span class="s-hint">keys are region-bound — a Global key will 401 against China, and vice versa</span></label>
@@ -247,6 +286,43 @@
 
         <label class="s-label" style="margin-top:14px;">Questions to ask the interviewer <span class="s-hint">cue will suggest these at the end</span></label>
         <textarea id="questions-to-ask" rows="6" spellcheck="false" placeholder="e.g.&#10;- What does success look like in the first 90 days?&#10;- How does the team handle technical debt?&#10;- What's the biggest challenge the team is facing right now?&#10;- How does feedback and mentorship work here?"></textarea>
+      </div>
+
+      <!-- Tab: Meeting -->
+      <div class="s-body s-tab-pane hidden" data-pane="meeting">
+        <label class="s-label">Mode <span class="s-hint">what cue is helping you do</span></label>
+        <div class="s-seg s-seg-wrap" id="persona-seg">
+          <button data-persona="interview">Interview</button>
+          <button data-persona="attack">Fact-check</button>
+        </div>
+        <div class="s-note">Interview keeps every original prompt. Fact-check repoints the same buttons at challenging claims other people make.</div>
+
+        <label class="s-label" style="margin-top:14px;">How hard to push <span class="s-hint">only used in Fact-check mode</span></label>
+        <div class="s-seg s-seg-wrap" id="aggression-seg">
+          <button data-aggression="1">Gentle</button>
+          <button data-aggression="2">Curious</button>
+          <button data-aggression="3">Direct</button>
+          <button data-aggression="4">Pointed</button>
+          <button data-aggression="5">Blunt</button>
+        </div>
+        <div class="s-note">Gentle frames doubt as your own uncertainty. Blunt states a flat correction. cue always criticises the claim, never the person, and automatically softens when it is not confident.</div>
+
+        <label class="s-label" style="margin-top:14px;">People <span class="s-hint">one per line: Name | ally, neutral or target | notes</span></label>
+        <textarea id="roster" rows="6" spellcheck="false" placeholder="Dave | target | overstates latency numbers, cites blog posts as research&#10;Priya | ally | knows the billing system properly&#10;Sam | neutral |"></textarea>
+        <label class="s-label" style="margin-top:14px;">Walk-away point <span class="s-hint">Negotiation mode · kept confidential, never spoken</span></label>
+        <input id="negotiation-floor" type="text" placeholder="e.g. $140k, or 6-week delivery minimum" autocomplete="off" style="width:100%;padding:8px 10px;border-radius:8px;border:1px solid rgba(255,255,255,0.14);background:rgba(0,0,0,0.25);color:#fff;font-size:13px;font-family:inherit;outline:none;" />
+        <div class="s-note">cue steers toward your target in the Q&amp;A tab and will never let you state or drift below this figure. It is never included in anything you are told to say.</div>
+
+        <label class="s-label" style="margin-top:14px;">Other priorities <span class="s-hint">Negotiation mode</span></label>
+        <textarea id="negotiation-notes" rows="3" spellcheck="false" placeholder="e.g. start date is flexible, equity matters more than base, need remote two days a week"></textarea>
+
+        <label class="s-label" style="margin-top:14px;">Reference documents <span class="s-hint">PDF or DOCX — claims get checked against these</span></label>
+        <div class="s-field s-upload"><span class="s-filename" id="documents-summary">None loaded</span><button class="s-upload-btn" id="add-documents-btn">Add documents</button><button class="s-upload-btn" id="clear-documents-btn">Clear</button></div>
+        <div class="s-note">A claim contradicted by a document you loaded is the one thing cue will correct with full confidence, because it can actually see the source.</div>
+
+        <div class="s-hint-block">
+          cue scrutinises <strong>target</strong> claims closely and leaves <strong>ally</strong> claims alone. Audio from a meeting arrives as one mixed channel with no speaker labels, so cue works out who said what from names used out loud — it will tell you when it is guessing.
+        </div>
       </div>
 
       <!-- Tab: Style -->

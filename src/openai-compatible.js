@@ -44,6 +44,20 @@ function normalizeBaseUrl(value) {
  * @param {unknown} baseUrl Raw base URL setting.
  * @returns {{apiKey: string, baseURL: string}} OpenAI SDK client options.
  */
+// A key really is optional for a local server (Ollama, LM Studio, llama.cpp),
+// which is why the placeholder exists. A remote endpoint is the opposite: it
+// will always reject the placeholder, and the resulting error reads
+// "your api key: ****ired is invalid", which sends people hunting for a bad key
+// they never set. Say what is actually wrong instead.
+function isLocalHost(baseURL) {
+  try {
+    const host = new URL(baseURL).hostname;
+    return host === 'localhost' || host === '127.0.0.1' || host === '::1' || host.endsWith('.local');
+  } catch {
+    return false;
+  }
+}
+
 function createCompatibleClientOptions(apiKey, baseUrl) {
   const baseURL = normalizeBaseUrl(baseUrl);
   if (!baseURL) {
@@ -51,6 +65,10 @@ function createCompatibleClientOptions(apiKey, baseUrl) {
   }
 
   const normalizedApiKey = typeof apiKey === 'string' ? apiKey.trim() : '';
+  if (!normalizedApiKey && !isLocalHost(baseURL)) {
+    throw new Error('Add your API key for the Custom provider — ' + new URL(baseURL).hostname + ' requires one.');
+  }
+
   return {
     apiKey: normalizedApiKey || OPTIONAL_API_KEY_PLACEHOLDER,
     baseURL
@@ -60,5 +78,6 @@ function createCompatibleClientOptions(apiKey, baseUrl) {
 module.exports = {
   OPTIONAL_API_KEY_PLACEHOLDER,
   createCompatibleClientOptions,
-  normalizeBaseUrl
+  normalizeBaseUrl,
+  isLocalHost
 };

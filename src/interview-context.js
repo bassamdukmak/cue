@@ -279,4 +279,4 @@ function buildResumeContext(resumeText, jobDescription, mode) {
   return parts.join('\n\n');
 }
 
-module.exports = { buildInterviewContext, buildResumeContext, detectCategory, parseResume };
+module.exports = { buildInterviewContext, buildResumeContext, detectCategory, parseResume, clip, buildResumeBlock };

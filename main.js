@@ -5,8 +5,9 @@ const store = require('./src/store');
 const { captureScreenshot } = require('./src/screen');
 const { createSTT } = require('./src/stt');
 const { parseDocumentFile } = require('./src/resume');
-const { createLLM } = require('./src/llm');
+const { createLLM, modelSupportsVision } = require('./src/llm');
 const { MODES } = require('./src/prompts');
+const { resolveMode } = require('./src/personas');
 const { rms16 } = require('./src/wav');
 const { createStreamingSTT } = require('./src/stt-streaming');
 const { AdaptiveVAD, AudioRingBuffer } = require('./src/vad');
@@ -108,12 +109,41 @@ function getWhisperRuntime() {
   });
 }
 
+// -------- automatic suggestions --------
+// Pressing a button mid-sentence is exactly the moment the user cannot spare, so
+// auto mode runs the persona's main suggestion for them.
+//
+// It waits for the other side to stop talking rather than firing per utterance:
+// a sentence fragment produces a useless suggestion, and every run costs a real
+// API call. It never queues — if the user pressed something manually, that wins
+// and the automatic run is simply skipped.
+const AUTO_SUGGEST_QUIET_MS = 2500;   // silence that counts as "they finished"
+const AUTO_SUGGEST_MIN_GAP_MS = 12000; // floor between runs, so a long monologue is not billed per pause
+let autoSuggestTimer = null;
+let autoSuggestLastRun = 0;
+
+function scheduleAutoSuggest() {
+  if (!store.getSettings().autoSuggest) return;
+  if (autoSuggestTimer) clearTimeout(autoSuggestTimer);
+  autoSuggestTimer = setTimeout(() => {
+    autoSuggestTimer = null;
+    if (state.busy) return;
+    if (Date.now() - autoSuggestLastRun < AUTO_SUGGEST_MIN_GAP_MS) return;
+    if (!store.getSettings().autoSuggest) return;
+    autoSuggestLastRun = Date.now();
+    runFeature('say', '');
+  }, AUTO_SUGGEST_QUIET_MS);
+}
+
 function publishTranscript(channel, text) {
   if (!text || !text.trim()) return;
   const turn = { channel, text: text.trim(), ts: Date.now() };
   pushTranscript(turn);
   send('transcript', turn);
   send('stt:final', { channel, text: turn.text });
+  // Only what the other side says should trigger a suggestion; reacting to the
+  // user's own voice would answer them mid-sentence.
+  if (channel === 'them') scheduleAutoSuggest();
 }
 
 async function startLocalWhisper(settings) {
@@ -486,7 +516,10 @@ async function setCapturing(active) {
 // -------- feature runner --------
 async function runFeature(mode, userText) {
   if (state.busy) return;
-  const def = MODES[mode];
+  // Persona decides which prompt table backs this mode; interview returns the
+  // original definition untouched.
+  const persona = store.getSettings().persona;
+  const def = resolveMode(persona, mode);
   if (!def) return;
   state.busy = true;
   let streamSettled = false; // drop stray tokens from a stream we've already abandoned
@@ -496,7 +529,7 @@ async function runFeature(mode, userText) {
     const userBubble = def.userBubble !== null
       ? def.userBubble
       : (mode === 'ask' ? userText : mode === 'answerThis' ? `"${(userText || '').slice(0, 60)}${userText && userText.length > 60 ? '…' : ''}"` : null);
-    const category = mode !== 'leetcode' ? detectCategory(transcript) : null;
+    const category = (mode !== 'leetcode' && persona !== 'attack') ? detectCategory(transcript) : null;
     send('llm:start', { userBubble, small: !!def.small, category });
 
     if (!llm.ready) {
@@ -505,25 +538,43 @@ async function runFeature(mode, userText) {
       return;
     }
 
+    // A text-only model (DeepSeek and friends) cannot read an image at all, so
+    // capturing one would only cost a screenshot prompt for nothing.
+    const canSeeScreen = def.needsScreen && modelSupportsVision(llm.model);
     let imageDataUrl = null;
-    if (def.needsScreen) {
+    let screenUnavailableReason = null;
+    if (def.needsScreen && !canSeeScreen) {
+      screenUnavailableReason = 'the current model cannot read images';
+    }
+    if (canSeeScreen) {
       try {
         imageDataUrl = await captureScreenshot();
         if (!imageDataUrl) throw new Error('No screen source was available.');
       }
       catch (e) {
         recordEvent({ level: 'error', event: 'screen_capture_failed', msg: e && e.message ? e.message : String(e), frame: 'captureScreenshot', context: { mode } });
-        const message = process.platform === 'darwin'
-          ? 'Screen capture needs permission — grant Screen Recording to cue in System Settings.'
-          : process.platform === 'win32'
-            ? 'Screen capture failed. Make sure cue is not blocked by Windows privacy or security software, then try again.'
-            : 'Screen capture failed. Check your desktop capture permissions, then try again.';
-        send('status', { message });
+        screenUnavailableReason = 'screen recording permission has not been granted';
+        // Screen access is optional, so this is a note about a degraded answer,
+        // not an error the user has to go and fix before continuing.
+        send('status', { message: 'No screen access — answering from the conversation only.' });
       }
     }
 
     const settingsForPrompt = store.getSettings();
-    const contextBlock = buildInterviewContext(settingsForPrompt, mode, transcript);
+    let contextBlock = def.buildContext
+      ? def.buildContext(settingsForPrompt, transcript)
+      : buildInterviewContext(settingsForPrompt, mode, transcript);
+
+    // Without this the prompt still says "a screenshot is attached", so the model
+    // hunts for an image that was never sent and asks the user to describe their
+    // own screen — useless mid-meeting.
+    if (screenUnavailableReason) {
+      contextBlock = (contextBlock ? contextBlock + '\n\n' : '')
+        + 'NO SCREENSHOT IS AVAILABLE for this request (' + screenUnavailableReason + '). '
+        + 'Ignore any instruction below about an attached image. Answer from the conversation '
+        + 'transcript alone, and never ask the user to describe or paste what is on their '
+        + 'screen — they cannot do that while the meeting is running.';
+    }
     const system = def.buildSystem ? def.buildSystem(contextBlock, settingsForPrompt.aiRules || '') : (def.system || '');
     const built = def.build({ transcript, userText: userText || '' });
 
@@ -627,6 +678,34 @@ ipcMain.on('mic:pcm', (_e, arrayBuffer) => { if (state.capturing) routeAudio('yo
 ipcMain.on('system:pcm', (_e, arrayBuffer) => { if (state.capturing) routeAudio('them', arrayBuffer); });
 ipcMain.on('mouse:ignore', (_e, v) => { if (win) win.setIgnoreMouseEvents(!!v, { forward: true }); });
 ipcMain.on('open-pane', (_e, url) => { shell.openExternal(url).catch(() => {}); });
+// Reference documents for fact-checking. Same main-process dialog and same
+// pdf/docx extractor as the resume import, but multi-select: a meeting usually
+// needs several files, and one dialog per file is a chore.
+ipcMain.handle('documents:pick', async () => {
+  try {
+    const res = await dialog.showOpenDialog(win, {
+      title: 'Add reference documents',
+      properties: ['openFile', 'multiSelections'],
+      filters: [{ name: 'Documents', extensions: ['pdf', 'docx'] }]
+    });
+    if (res.canceled || !res.filePaths.length) return { canceled: true };
+    const documents = [];
+    const failed = [];
+    for (const filePath of res.filePaths) {
+      try {
+        const text = await parseDocumentFile(filePath);
+        documents.push({ name: path.basename(filePath), text, chars: text.length });
+      } catch (e) {
+        // One unreadable file must not discard the ones that parsed fine.
+        failed.push(path.basename(filePath) + ': ' + ((e && e.message) || String(e)));
+      }
+    }
+    return { canceled: false, documents, failed };
+  } catch (e) {
+    return { canceled: false, documents: [], failed: [(e && e.message) || String(e)] };
+  }
+});
+
 ipcMain.on('app:quit', () => app.quit());
 ipcMain.on('log', (_e, msg) => console.log('[renderer]', msg));
 // -------- resume / job-description file import --------
@@ -661,7 +740,10 @@ ipcMain.handle('permissions:check', () => getPermissionStatus());
 ipcMain.handle('permissions:request', () => requestPermissions());
 ipcMain.on('permissions:continue', async () => {
   const status = await getPermissionStatus();
-  if (status.mic === 'granted' && status.screen === 'granted') {
+  // Microphone only. Screen access is optional, and detecting it is unreliable
+  // enough that requiring it here silently swallowed the Continue click and left
+  // the user stuck on this window with no feedback and no way forward.
+  if (status.mic === 'granted') {
     if (permWin) { permWin.close(); permWin = null; }
     launchApp();
   }
@@ -733,7 +815,8 @@ async function requestPermissions() {
   }
 
   const status = await getPermissionStatus();
-  return status.mic === 'granted' && status.screen === 'granted';
+  // Only the microphone blocks startup; screen-reading modes degrade on their own.
+  return status.mic === 'granted';
 }
 
 function createPermissionsWindow() {

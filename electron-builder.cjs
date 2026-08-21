@@ -41,6 +41,7 @@ module.exports = {
   mac: {
     target: [{ target: "zip", arch: ["x64", "arm64"] }],
     category: "public.app-category.productivity",
+    icon: "build-resources/icon.icns",
     // With a real cert, let electron-builder discover it and apply the hardened
     // runtime (notarization is refused without it). Without one, identity:null
     // makes it skip signing rather than fail.

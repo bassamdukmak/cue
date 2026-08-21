@@ -179,7 +179,10 @@
       to { opacity: 1; transform: none; }
     }
     .perm-card { animation: fadeIn 280ms cubic-bezier(0.22,1,0.36,1); }
-  </style>
+        .perm-row.optional { border-color: rgba(255,255,255,0.10); }
+      .perm-status.warn { color: #C9A227; }
+      .perm-badge.warn { color: #C9A227; }
+    </style>
 </head>
 <body>
   <div id="perm-root">
@@ -187,7 +190,7 @@
       <div class="perm-icon">🔐</div>
       <div class="perm-title">cue needs your permission</div>
       <div class="perm-desc">
-        Grant <strong>Microphone</strong> and <strong>Screen Recording</strong> access so cue can hear your meetings and see your screen.
+        Grant <strong>Microphone</strong> so cue can hear your meetings. <strong>Screen Recording</strong> is optional — it only powers the modes that read your screen.
       </div>
 
       <!-- Microphone -->
@@ -254,16 +257,24 @@
         badgeMic.className = 'perm-badge ' + (micOk ? 'ok' : 'bad');
         btnMic.classList.toggle('hidden', micOk);
 
-        // Screen
-        rowScreen.className = 'perm-row no-drag ' + (screenOk ? 'granted' : 'denied');
-        statusScreen.textContent = screenOk ? 'Granted' : (status.screen === 'not-determined' ? 'Not yet requested' : 'Not granted — open Settings to allow');
-        statusScreen.className = 'perm-status ' + (screenOk ? 'ok' : 'bad');
-        badgeScreen.textContent = screenOk ? '✓' : '✗';
-        badgeScreen.className = 'perm-badge ' + (screenOk ? 'ok' : 'bad');
+        // Screen — OPTIONAL. Detecting it is unreliable: getMediaAccessStatus('screen')
+        // misreports, and the capture fallback can read a black thumbnail as "denied"
+        // even when access was granted. Gating Continue on it meant a false negative
+        // locked the user out of the whole app with no way past, no matter how many
+        // times they granted it. Only the microphone is genuinely required; without
+        // screen access cue simply cannot use the screen-reading modes.
+        rowScreen.className = 'perm-row no-drag ' + (screenOk ? 'granted' : 'optional');
+        statusScreen.textContent = screenOk
+          ? 'Granted'
+          : 'Optional — without it, screen-reading modes are unavailable';
+        statusScreen.className = 'perm-status ' + (screenOk ? 'ok' : 'warn');
+        badgeScreen.textContent = screenOk ? '✓' : '—';
+        badgeScreen.className = 'perm-badge ' + (screenOk ? 'ok' : 'warn');
         btnScreen.classList.toggle('hidden', screenOk);
 
         // Continue
-        continueBtn.disabled = !(micOk && screenOk);
+        continueBtn.disabled = !micOk;
+        continueBtn.textContent = (micOk && !screenOk) ? 'Continue without screen access' : 'Continue';
       }
 
       async function checkPermissions() {
