@@ -17,6 +17,7 @@ contextBridge.exposeInMainWorld('cue', {
     return false;
   }),
   captureState: () => ipcRenderer.invoke('capture:state'),
+  captureInputFailed: (channel, message) => ipcRenderer.invoke('capture:input-failed', { channel, message }),
   micPcm: (arrayBuffer) => ipcRenderer.send('mic:pcm', arrayBuffer),
   systemPcm: (arrayBuffer) => ipcRenderer.send('system:pcm', arrayBuffer),
   setIgnoreMouse: (v) => ipcRenderer.send('mouse:ignore', v),

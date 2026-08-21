@@ -26,13 +26,14 @@ function isOcrAvailable() {
 
 async function extractTextFromImage(dataUrl) {
   const binary = locateOcrBinary();
-  if (!binary || typeof dataUrl !== 'string') return null;
+  if (!binary) return { text: null, error: 'OCR helper is not installed.' };
+  if (typeof dataUrl !== 'string') return { text: null, error: 'Screenshot data is invalid.' };
 
   let tempDirectory;
   let imagePath;
   try {
     const comma = dataUrl.indexOf(',');
-    if (comma < 0) return null;
+    if (comma < 0) return { text: null, error: 'Screenshot data is invalid.' };
     tempDirectory = await fs.promises.mkdtemp(path.join(os.tmpdir(), 'cue-ocr-'));
     imagePath = path.join(tempDirectory, 'screen.png');
     await fs.promises.writeFile(imagePath, Buffer.from(dataUrl.slice(comma + 1), 'base64'));
@@ -48,18 +49,19 @@ async function extractTextFromImage(dataUrl) {
       };
       const child = spawn(binary, [imagePath], { stdio: ['ignore', 'pipe', 'ignore'] });
       child.stdout.on('data', (chunk) => { output += chunk; });
-      child.once('error', () => finish(null));
+      child.once('error', (error) => finish({ text: null, error: `OCR could not start: ${error.message}` }));
       child.once('close', (code) => {
         const text = output.trim();
-        finish(code === 0 && text ? text.slice(0, 6000) : null);
+        if (code !== 0) return finish({ text: null, error: `OCR exited with code ${code}.` });
+        finish(text ? { text: text.slice(0, 6000), error: null } : { text: null, error: 'OCR found no readable text.' });
       });
       timer = setTimeout(() => {
         child.kill('SIGKILL');
-        finish(null);
+        finish({ text: null, error: 'OCR timed out.' });
       }, 5000);
     });
-  } catch (_) {
-    return null;
+  } catch (error) {
+    return { text: null, error: `OCR could not read the screenshot: ${error.message}` };
   } finally {
     if (imagePath) await fs.promises.unlink(imagePath).catch(() => {});
     if (tempDirectory) await fs.promises.rmdir(tempDirectory).catch(() => {});

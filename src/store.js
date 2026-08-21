@@ -88,13 +88,30 @@ function deepMerge(base, over) {
 
 function load() {
   if (data) return data;
-  try { data = deepMerge(DEFAULTS, JSON.parse(fs.readFileSync(FILE, 'utf8'))); }
-  catch { data = deepMerge(DEFAULTS, {}); }
-
-
+  try {
+    data = deepMerge(DEFAULTS, JSON.parse(fs.readFileSync(FILE, 'utf8')));
+  } catch (error) {
+    if (error.code === 'ENOENT') {
+      data = deepMerge(DEFAULTS, {});
+      return data;
+    }
+    if (error instanceof SyntaxError) {
+      const preserved = `${FILE}.corrupt-${Date.now()}`;
+      try {
+        fs.renameSync(FILE, preserved);
+      } catch (renameError) {
+        throw new Error(`Settings are corrupt and could not be preserved: ${renameError.message}`);
+      }
+      throw new Error(`Settings are corrupt. The original file was preserved as ${path.basename(preserved)}.`);
+    }
+    throw new Error(`Settings could not be read: ${error.message}`);
+  }
   return data;
 }
-function save() { try { fs.writeFileSync(FILE, JSON.stringify(data, null, 2)); } catch (e) { /* ignore */ } }
+function save(nextSettings) {
+  fs.writeFileSync(FILE, JSON.stringify(nextSettings, null, 2));
+  data = nextSettings;
+}
 
 module.exports = {
   MAX_AI_RULES_CHARS,
@@ -103,8 +120,7 @@ module.exports = {
     load();
     const nextSettings = deepMerge(data, patch || {});
     nextSettings.baseUrl = normalizeBaseUrl(nextSettings.baseUrl);
-    data = nextSettings;
-    save();
+    save(nextSettings);
     return data;
   }
 };

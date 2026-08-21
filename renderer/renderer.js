@@ -713,7 +713,7 @@
       if (!track) {
         micStream.getTracks().forEach((t) => t.stop());
         micStream = null;
-        showStatus('No microphone audio track was available. Check Windows Sound settings for a working default input device, then try again.');
+        cue.captureInputFailed('you', 'No microphone audio track was available. Check your default input device, then try again.');
         return;
       }
       cue.log('mic stream started: track=' + (track.label || '(no label — permission may be stale)') + ' muted=' + track.muted);
@@ -745,6 +745,7 @@
         };
         micWorklet = { _legacy: true, proc: micProc, node: micNode, sink };
       }
+      showStatus('', true, 'microphone');
     } catch (err) {
       const message = err && err.message ? err.message : String(err);
       const name = err && err.name;
@@ -754,15 +755,15 @@
       // Distinguishing "no device" from "denied" from "in use elsewhere"
       // turns one generic dead end into three different next actions.
       if (name === 'NotFoundError' || name === 'DevicesNotFoundError') {
-        showStatus('No microphone was found. Plug one in, or pick a default input device in your OS sound settings, then try again.');
+        cue.captureInputFailed('you', 'No microphone was found. Plug one in, or pick a default input device in your OS sound settings, then try again.');
       } else if (name === 'NotAllowedError' || name === 'PermissionDeniedError' || name === 'SecurityError') {
-        showStatus(isWindows
+        cue.captureInputFailed('you', isWindows
           ? 'Microphone permission was denied. Settings → Privacy & security → Microphone → allow cue, then try again.'
           : 'Microphone permission was denied. System Settings → Privacy & Security → Microphone → allow cue, then try again.');
       } else if (name === 'NotReadableError' || name === 'TrackStartError') {
-        showStatus('The microphone could not be started — another application may be using it exclusively. Close other apps using the mic and try again.');
+        cue.captureInputFailed('you', 'The microphone could not be started — another application may be using it exclusively. Close other apps using the mic and try again.');
       } else {
-        showStatus('Microphone capture could not be started. Check your mic permissions and try again.');
+        cue.captureInputFailed('you', 'Microphone capture could not be started. Check your mic permissions and try again.');
       }
     }
   }
@@ -790,7 +791,8 @@
     sysStarting = true;
     if (!navigator.mediaDevices || typeof navigator.mediaDevices.getDisplayMedia !== 'function') {
       cue.log('system audio unavailable: getDisplayMedia not supported');
-      showStatus('Meeting audio capture is not available on this device build.');
+      showStatus('Meeting audio off — this device build cannot capture meeting audio.', true, 'meeting-audio');
+      sysStarting = false;
       return;
     }
     try {
@@ -802,8 +804,8 @@
         cue.log('system audio: no loopback track on this platform');
         stream.getTracks().forEach((t) => t.stop());
         showStatus(cue.platform === 'win32'
-          ? 'No system-audio loopback track detected. Make sure "Share audio" is checked in the screen share dialog, and that your audio device is not in exclusive mode.'
-          : 'No system-audio loopback track detected. Meeting audio needs macOS 14.4+ — your screen and microphone still work.');
+          ? 'Meeting audio off — check "Share audio" in the screen share dialog and disable exclusive-mode audio.'
+          : 'Meeting audio off — macOS 14.4+ is required for system-audio loopback.', true, 'meeting-audio');
         return;
       }
       sysStream = stream;
@@ -834,10 +836,12 @@
         };
         sysWorklet = { _legacy: true, proc: sysProc, node: sysNode, sink };
       }
+      showStatus('', true, 'meeting-audio');
     } catch (err) {
       const message = err && err.message ? err.message : String(err);
       cue.log('system audio error: ' + message);
-      showStatus('Meeting audio could not be started. Grant screen/audio access to cue and try again.');
+      stopSystemAudio();
+      showStatus('Meeting audio off — grant Screen Recording and share audio, then try again.', true, 'meeting-audio');
     } finally {
       sysStarting = false;
     }
@@ -1047,7 +1051,6 @@
       // Don't auto-close sidebar — let user keep it open if they want
     }
     updateSttStatus({ active, streaming });
-    if (active) { startMic(); } else { stopMic(); stopSystemAudio(); }
     if (active && mode === 'local') {
       sttState = 'local';
       const label = document.getElementById('stt-status');
@@ -1207,7 +1210,9 @@
     }
   });
   let statusTimer = null;
-  function showStatus(message, persistent = false) {
+  let transientStatus = '';
+  const persistentStatuses = {};
+  function showStatus(message, persistent = false, key = 'general') {
     let el = document.getElementById('cue-status');
     if (!el) {
       el = document.createElement('div');
@@ -1223,15 +1228,30 @@
         document.getElementById('panel').appendChild(el);
       }
     }
-    el.textContent = message;
-    el.classList.add('show');
-    el.classList.toggle('persistent', persistent);
-    clearTimeout(statusTimer);
-    if (!persistent) statusTimer = setTimeout(() => el.classList.remove('show'), 11000);
+    if (persistent) {
+      if (message) persistentStatuses[key] = message;
+      else delete persistentStatuses[key];
+    } else {
+      transientStatus = message;
+      clearTimeout(statusTimer);
+      statusTimer = setTimeout(() => {
+        transientStatus = '';
+        renderStatus();
+      }, 11000);
+    }
+    renderStatus();
   }
-  cue.on('status', ({ message, persistent }) => {
+  function renderStatus() {
+    const el = document.getElementById('cue-status');
+    if (!el) return;
+    const messages = [...Object.values(persistentStatuses), transientStatus].filter(Boolean);
+    el.textContent = messages.join(' · ');
+    el.classList.toggle('show', messages.length > 0);
+    el.classList.toggle('persistent', Object.keys(persistentStatuses).length > 0);
+  }
+  cue.on('status', ({ message, persistent, key }) => {
     cue.log('[status] ' + message);
-    showStatus(message, persistent);
+    showStatus(message, persistent, key);
     if (sttState !== 'disconnected') {
       const lower = message.toLowerCase();
       if (lower.includes('error') || lower.includes(' off')) {
@@ -1864,14 +1884,15 @@
     settings.questionsToAsk = $('#questions-to-ask').value.trim();
     try {
       settings = await cue.settingsSet(settings);
+      showStatus('', true, 'settings');
       $('#s-status').textContent = statusText();
       updatePrepStatus();
       updateSmartTooltip();
       return true;
     } catch (error) {
       const message = error && error.message ? error.message : String(error);
-      $('#s-status').textContent = message;
-      $('#base-url').focus();
+      $('#s-status').textContent = `Settings were not saved: ${message}`;
+      showStatus(`Settings were not saved: ${message}`, true, 'settings');
       return false;
     }
   }
@@ -2016,7 +2037,13 @@
 
   // ---- boot --------------------------------------------------------------
   (async function boot() {
-    settings = await cue.settingsGet();
+    try {
+      settings = await cue.settingsGet();
+    } catch (error) {
+      const message = error && error.message ? error.message : String(error);
+      showStatus(`Settings could not be loaded: ${message}`, true, 'settings');
+      return;
+    }
     syncPersonaUI();
     $('#auto-toggle').classList.toggle('on', !!settings.autoSuggest);
     syncInsightsPanel();

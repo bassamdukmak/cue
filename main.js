@@ -72,6 +72,7 @@ let activeWhisperModelId = null;
 let desiredCaptureState = false;
 let captureTransition = Promise.resolve(false);
 let soloFallbackAnnounced = false;
+let startupSettingsError = null;
 const MISSING_LOCAL_MODEL_MESSAGE = 'No speech model — open Settings > Audio and download one, or nothing will be transcribed.';
 
 // -------- streaming STT state --------
@@ -333,7 +334,13 @@ function createWindow() {
   const { workArea } = screen.getPrimaryDisplay();
   const W = 700, H = 600;
 
-  const savedSettings = store.getSettings();
+  let savedSettings;
+  try {
+    savedSettings = store.getSettings();
+  } catch (error) {
+    startupSettingsError = error.message;
+    savedSettings = { windowX: null, windowY: null };
+  }
   let startX = Math.round(workArea.x + (workArea.width - W) / 2);
   let startY = workArea.y + 6;
 
@@ -398,7 +405,11 @@ function createWindow() {
     moveSaveTimer = setTimeout(() => {
       if (win && !win.isDestroyed()) {
         const [x, y] = win.getPosition();
-        store.setSettings({ windowX: x, windowY: y });
+        try {
+          store.setSettings({ windowX: x, windowY: y });
+        } catch (error) {
+          send('status', { message: `Settings could not be saved: ${error.message}`, persistent: true, key: 'settings' });
+        }
       }
     }, 500);
   });
@@ -413,6 +424,9 @@ function createWindow() {
       send('status', {
         message: `Heads up: your Windows version (build ${WIN_BUILD}) does not support screen-share hiding. Upgrade to Windows 10 build 19041+ or Windows 11 to enable invisibility in screen shares.`
       });
+    }
+    if (startupSettingsError) {
+      send('status', { message: `Settings could not be loaded: ${startupSettingsError}`, persistent: true, key: 'settings' });
     }
     reportMissingLocalModel(store.getSettings()).catch((error) => {
       console.log('[local-whisper] model check error', error && error.message);
@@ -671,7 +685,14 @@ async function runFeature(mode, userText) {
       try {
         imageDataUrl = await captureScreenshot();
         if (!imageDataUrl) throw new Error('No screen source was available.');
-        if (!canSeeScreen) screenText = await extractTextFromImage(imageDataUrl);
+        if (!canSeeScreen) {
+          const ocr = await extractTextFromImage(imageDataUrl);
+          screenText = ocr.text;
+          if (ocr.error) {
+            screenUnavailableReason = `screen text extraction failed: ${ocr.error}`;
+            send('status', { message: `Screen text extraction failed: ${ocr.error}` });
+          }
+        }
       }
       catch (e) {
         recordEvent({ level: 'error', event: 'screen_capture_failed', msg: e && e.message ? e.message : String(e), frame: 'captureScreenshot', context: { mode } });
@@ -680,9 +701,6 @@ async function runFeature(mode, userText) {
         // not an error the user has to go and fix before continuing.
         send('status', { message: 'No screen access — answering from the conversation only.' });
       }
-    }
-    if (def.needsScreen && !canSeeScreen && !screenText && !screenUnavailableReason) {
-      screenUnavailableReason = 'the current model cannot read images';
     }
     if (!canSeeScreen) imageDataUrl = null;
 
@@ -770,6 +788,18 @@ ipcMain.handle('capture:toggle', () => {
   return captureTransition;
 });
 ipcMain.handle('capture:state', () => ({ active: state.capturing }));
+ipcMain.handle('capture:input-failed', (_e, { channel, message } = {}) => {
+  if (channel !== 'you' || !state.capturing) return false;
+  desiredCaptureState = false;
+  captureTransition = captureTransition
+    .catch(() => state.capturing)
+    .then(async () => {
+      await setCapturing(false);
+      send('status', { message: `Microphone unavailable — ${message || 'check permissions and try again.'}`, persistent: true, key: 'microphone' });
+      return false;
+    });
+  return captureTransition;
+});
 ipcMain.handle('whisper:models', () => getWhisperOverview());
 ipcMain.handle('whisper:model-download', async (_event, modelId) => {
   if (!whisperModelManager) throw new Error('The local Whisper model manager is not ready.');
