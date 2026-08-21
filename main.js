@@ -28,6 +28,7 @@ const { WhisperModelManager } = require('./src/whisper-model-manager');
 const { requireWhisperModel } = require('./src/whisper-model-catalog');
 const { locateWhisperRuntime } = require('./src/whisper-runtime');
 const { LocalWhisperTranscriber } = require('./src/local-whisper-transcriber');
+const { shouldScheduleAutoSuggest } = require('./src/auto-suggest-trigger');
 
 let win = null;
 // Which global shortcuts cue actually holds. `globalShortcut.register` returns
@@ -70,6 +71,8 @@ let localWhisperTranscriber = null;
 let activeWhisperModelId = null;
 let desiredCaptureState = false;
 let captureTransition = Promise.resolve(false);
+let soloFallbackAnnounced = false;
+const MISSING_LOCAL_MODEL_MESSAGE = 'No speech model — open Settings > Audio and download one, or nothing will be transcribed.';
 
 // -------- streaming STT state --------
 let streamingSTT = { you: null, them: null }; // streaming STT instances per channel
@@ -244,9 +247,22 @@ function publishTranscript(channel, text) {
   pushTranscript(turn);
   send('transcript', turn);
   send('stt:final', { channel, text: turn.text });
-  // Only what the other side says should trigger a suggestion; reacting to the
-  // user's own voice would answer them mid-sentence.
-  if (channel === 'them') scheduleAutoSuggest();
+  if (shouldScheduleAutoSuggest(channel) && store.getSettings().autoSuggest) {
+    if (channel === 'you' && !soloFallbackAnnounced) {
+      soloFallbackAnnounced = true;
+      send('status', { message: 'No meeting audio yet — using your microphone to trigger suggestions.' });
+    }
+    scheduleAutoSuggest();
+  }
+}
+
+async function reportMissingLocalModel(settings) {
+  if ((settings.sttProvider || 'auto') !== 'local' || !whisperModelManager) return false;
+  const models = await whisperModelManager.listModels();
+  if (models.some((model) => model.installed)) return false;
+  send('stt:status', { provider: 'local', status: 'error' });
+  send('status', { message: MISSING_LOCAL_MODEL_MESSAGE, persistent: true });
+  return true;
 }
 
 async function startLocalWhisper(settings) {
@@ -398,6 +414,9 @@ function createWindow() {
         message: `Heads up: your Windows version (build ${WIN_BUILD}) does not support screen-share hiding. Upgrade to Windows 10 build 19041+ or Windows 11 to enable invisibility in screen shares.`
       });
     }
+    reportMissingLocalModel(store.getSettings()).catch((error) => {
+      console.log('[local-whisper] model check error', error && error.message);
+    });
   });
   win.webContents.on('render-process-gone', (_e, d) => {
     console.log('[cue] renderer gone', JSON.stringify(d));
@@ -429,9 +448,7 @@ async function flushChannel(channel) {
       return;
     }
     if (res.text && res.text.trim() && res.text.trim().length > 1 && !/^[?!.,;:\-…]+$/.test(res.text.trim())) {
-      const turn = { channel, text: res.text.trim(), ts: Date.now() };
-      pushTranscript(turn);
-      send('transcript', turn);
+      publishTranscript(channel, res.text);
     }
   } catch (e) {
     console.log('[stt] error', e && e.message);
@@ -478,10 +495,7 @@ function initStreamingSTT() {
   ['you', 'them'].forEach((channel) => {
     const sttInstance = createStreamingSTT(settings, channel, {
       onTranscript: (ch, text) => {
-        const turn = { channel: ch, text, ts: Date.now() };
-        pushTranscript(turn);
-        send('transcript', turn);
-        send('stt:final', { channel: ch, text });
+        publishTranscript(ch, text);
       },
       onInterim: (ch, text) => {
         send('stt:interim', { channel: ch, text });
@@ -563,6 +577,12 @@ async function setCapturing(active) {
     const settings = store.getSettings();
     if ((settings.sttProvider || 'auto') === 'local') {
       try {
+        if (await reportMissingLocalModel(settings)) {
+          state.capturing = false;
+          desiredCaptureState = false;
+          send('capture:state', { active: false, streaming: false, mode: 'local' });
+          return false;
+        }
         await startLocalWhisper(settings);
         state.capturing = true;
         console.log('[cue] capture started, mode: local');

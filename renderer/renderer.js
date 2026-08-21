@@ -1207,7 +1207,7 @@
     }
   });
   let statusTimer = null;
-  function showStatus(message) {
+  function showStatus(message, persistent = false) {
     let el = document.getElementById('cue-status');
     if (!el) {
       el = document.createElement('div');
@@ -1225,12 +1225,13 @@
     }
     el.textContent = message;
     el.classList.add('show');
+    el.classList.toggle('persistent', persistent);
     clearTimeout(statusTimer);
-    statusTimer = setTimeout(() => el.classList.remove('show'), 11000);
+    if (!persistent) statusTimer = setTimeout(() => el.classList.remove('show'), 11000);
   }
-  cue.on('status', ({ message }) => {
+  cue.on('status', ({ message, persistent }) => {
     cue.log('[status] ' + message);
-    showStatus(message);
+    showStatus(message, persistent);
     if (sttState !== 'disconnected') {
       const lower = message.toLowerCase();
       if (lower.includes('error') || lower.includes(' off')) {
