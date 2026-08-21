@@ -596,6 +596,35 @@
       : 'Auto off — suggestions only when you press a button.');
   });
 
+  const goalControl = $('#goal-control');
+  const goalBtn = $('#goal-toggle');
+  const goalPopover = $('#goal-popover');
+  const meetingGoal = $('#meeting-goal');
+  let goalPersistTimer = null;
+  function updateGoalControl() {
+    const goal = (settings.meetingGoal || '').trim();
+    $('#goal-label').textContent = goal ? (goal.length > 24 ? goal.slice(0, 23) + '…' : goal) : 'Goal';
+    goalBtn.classList.toggle('on', !!goal);
+    goalBtn.title = goal || 'Set your goal for this meeting';
+  }
+  function persistMeetingGoal() {
+    clearTimeout(goalPersistTimer);
+    goalPersistTimer = setTimeout(async () => {
+      settings.meetingGoal = meetingGoal.value.trim();
+      updateGoalControl();
+      await cue.settingsSet({ meetingGoal: settings.meetingGoal });
+      renderPersistenceSummary();
+    }, 400);
+  }
+  goalBtn.addEventListener('click', () => {
+    goalPopover.classList.toggle('hidden');
+    if (!goalPopover.classList.contains('hidden')) meetingGoal.focus();
+  });
+  meetingGoal.addEventListener('input', persistMeetingGoal);
+  document.addEventListener('click', (event) => {
+    if (!goalControl.contains(event.target)) goalPopover.classList.add('hidden');
+  });
+
   // ---- live insights panel ------------------------------------------------
   // Fed by the main process on its own timer; this side only renders.
   let insightsDismissed = false;
@@ -1444,10 +1473,14 @@
     $('#work-style').value = settings.workStyle || '';
     // Style tab
     $('#ai-rules').value = settings.aiRules || '';
+    $('#standing-context').value = settings.standingContext || '';
     $('#roster').value = settings.roster || '';
     $('#negotiation-floor').value = settings.negotiationFloor || '';
     $('#negotiation-notes').value = settings.negotiationNotes || '';
     renderDocumentsSummary();
+    renderPersistenceSummary();
+    meetingGoal.value = settings.meetingGoal || '';
+    updateGoalControl();
     document.querySelectorAll('#persona-seg button').forEach((b) => b.classList.toggle('on', b.dataset.persona === (settings.persona || 'interview')));
     document.querySelectorAll('#aggression-seg button').forEach((b) => b.classList.toggle('on', Number(b.dataset.aggression) === (settings.aggression || 2)));
     updateAiRulesCounter();
@@ -1508,21 +1541,32 @@
       : 'None loaded';
   }
 
+  function renderPersistenceSummary() {
+    const documents = (settings.documents || []).length;
+    const goal = (settings.meetingGoal || '').trim() ? 'goal set' : 'no goal set';
+    const standing = (settings.standingContext || '').trim();
+    $('#persistence-summary').textContent = `${documents} document${documents === 1 ? '' : 's'}, ${goal}, ${standing ? `standing context ${standing.length} chars` : 'no standing context'} — kept across restarts.`;
+  }
+
   const addDocumentsBtn = document.getElementById('add-documents-btn');
   if (addDocumentsBtn) addDocumentsBtn.addEventListener('click', async () => {
     const res = await cue.pickDocuments();
     if (!res || res.canceled) return;
     settings.documents = (settings.documents || []).concat(res.documents || []);
+    await cue.settingsSet({ documents: settings.documents });
     renderDocumentsSummary();
+    renderPersistenceSummary();
     if (res.failed && res.failed.length) showStatus('Could not read: ' + res.failed.join('; '));
-    else showStatus(`Added ${res.documents.length} document(s) — press Save to keep them.`);
+    else showStatus(`Added ${res.documents.length} document(s) — kept across restarts.`);
   });
 
   const clearDocumentsBtn = document.getElementById('clear-documents-btn');
-  if (clearDocumentsBtn) clearDocumentsBtn.addEventListener('click', () => {
+  if (clearDocumentsBtn) clearDocumentsBtn.addEventListener('click', async () => {
     settings.documents = [];
+    await cue.settingsSet({ documents: settings.documents });
     renderDocumentsSummary();
-    showStatus('Documents cleared — press Save to keep the change.');
+    renderPersistenceSummary();
+    showStatus('Documents cleared — kept across restarts.');
   });
 
   const uploadJdBtn = document.getElementById('upload-jd-btn');
@@ -1876,6 +1920,7 @@
     settings.workStyle = $('#work-style').value.trim();
     // Style tab
     settings.aiRules = $('#ai-rules').value.trim();
+    settings.standingContext = $('#standing-context').value.trim();
     settings.roster = $('#roster').value.trim();
     settings.negotiationFloor = $('#negotiation-floor').value.trim();
     settings.negotiationNotes = $('#negotiation-notes').value.trim();
@@ -1888,6 +1933,7 @@
       $('#s-status').textContent = statusText();
       updatePrepStatus();
       updateSmartTooltip();
+      renderPersistenceSummary();
       return true;
     } catch (error) {
       const message = error && error.message ? error.message : String(error);
@@ -2046,6 +2092,8 @@
     }
     syncPersonaUI();
     $('#auto-toggle').classList.toggle('on', !!settings.autoSuggest);
+    meetingGoal.value = settings.meetingGoal || '';
+    updateGoalControl();
     syncInsightsPanel();
     const platformInfo = await cue.platformInfo();
 

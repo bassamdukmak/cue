@@ -422,6 +422,15 @@ button:focus { outline: none; }
 }
 #composer-bottom { display: flex; align-items: center; gap: 8px; }
 .spacer { flex: 1; }
+.goal-control { position: relative; display: inline-flex; }
+.goal-popover {
+  position: absolute; bottom: 100%; left: 0; width: 260px; margin-bottom: 6px;
+  padding: 8px; border: 1px solid rgba(255,255,255,0.14); border-radius: 10px;
+  background: rgba(28,28,30,0.97); box-shadow: 0 12px 32px rgba(0,0,0,0.45);
+  backdrop-filter: blur(20px); z-index: 50;
+}
+.goal-popover textarea { width: 100%; resize: none; box-sizing: border-box; }
+.persistence-summary { margin-top: 8px; }
 .smart-pill {
   display: inline-flex; align-items: center; gap: 6px;
   padding: 5px 11px; border-radius: var(--r-pill);

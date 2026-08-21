@@ -47,6 +47,8 @@ const DEFAULTS = {
   aggression: 2,         // 1 = soften and hedge … 5 = flat correction
   roster: '',            // one per line: "Name | ally|neutral|target | notes"
   documents: [],         // [{ name, text, chars }] reference files for fact-checking
+  meetingGoal: '',       // short-lived outcome for the current meeting
+  standingContext: '',   // durable user/company/project context for every persona
   negotiationFloor: '',  // walk-away point — never revealed, never conceded past
   negotiationNotes: '',  // other priorities: start date, equity, scope, timeline
 

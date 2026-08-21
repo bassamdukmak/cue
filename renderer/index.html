@@ -99,6 +99,12 @@
                 </div>
                 <button id="auto-toggle" class="smart-pill" title="Suggest automatically when the other side stops talking"><span>Auto</span></button>
                 <button id="smart-toggle" class="smart-pill"><span class="ic"></span><span>Smart</span></button>
+                <div id="goal-control" class="goal-control">
+                  <button id="goal-toggle" class="smart-pill" title="Set your goal for this meeting"><span id="goal-label">Goal</span></button>
+                  <div id="goal-popover" class="goal-popover hidden">
+                    <textarea id="meeting-goal" rows="3" spellcheck="false" placeholder="What are you trying to get out of this meeting?"></textarea>
+                  </div>
+                </div>
                 <button id="history-btn" class="history-btn" title="View conversation history"><span class="ic"></span></button>
                 <button id="more-btn" class="more-btn" title="Settings"></button>
                 <div class="spacer"></div>
@@ -303,6 +309,11 @@
 
       <!-- Tab: Meeting -->
       <div class="s-body s-tab-pane hidden" data-pane="meeting">
+        <label class="s-label">Permanent context <span class="s-hint">included in every mode, permanently</span></label>
+        <textarea id="standing-context" rows="4" spellcheck="false" placeholder="Who you are, your company, role, project, or facts that are always true."></textarea>
+        <div class="s-note">This stays with cue across restarts and is included in every persona.</div>
+        <div class="s-note persistence-summary" id="persistence-summary"></div>
+
         <label class="s-label">Mode <span class="s-hint">what cue is helping you do</span></label>
         <div class="s-seg s-seg-wrap" id="persona-seg">
           <button data-persona="interview">Interview</button>

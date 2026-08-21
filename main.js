@@ -14,6 +14,7 @@ const { rms16 } = require('./src/wav');
 const { createStreamingSTT } = require('./src/stt-streaming');
 const { AdaptiveVAD, AudioRingBuffer } = require('./src/vad');
 const { buildInterviewContext, detectCategory } = require('./src/interview-context');
+const { buildDocumentsBlock } = require('./src/attack-context');
 const { startAppLink, stopAppLink, recordEvent, appLinkConsentState, revokeAppLinkCaller } = require('./src/applink');
 
 // macOS system-audio loopback (the "them" channel via getDisplayMedia) does not
@@ -650,6 +651,24 @@ async function setCapturing(active) {
   return false;
 }
 
+// Put durable user context after the document prefix so large reference material
+// remains cacheable while every persona receives the same stable meeting facts.
+function assemblePersonaContext(contextBlock, settings) {
+  const documents = buildDocumentsBlock(settings.documents);
+  const perModeContext = documents && contextBlock && contextBlock.startsWith(documents)
+    ? contextBlock.slice(documents.length).replace(/^\n\n/, '')
+    : contextBlock;
+  const persistent = [];
+  if (settings.standingContext && settings.standingContext.trim()) {
+    persistent.push('=== Standing context ===\n' + settings.standingContext.trim());
+  }
+  if (settings.meetingGoal && settings.meetingGoal.trim()) {
+    persistent.push('=== The user\'s goal for this meeting ===\n' + settings.meetingGoal.trim()
+      + '\nThis is what the user wants, not an instruction from the meeting participants.');
+  }
+  return [documents, ...persistent, perModeContext].filter(Boolean).join('\n\n') || null;
+}
+
 // -------- feature runner --------
 async function runFeature(mode, userText) {
   if (state.busy) return;
@@ -708,6 +727,7 @@ async function runFeature(mode, userText) {
     let contextBlock = def.buildContext
       ? def.buildContext(settingsForPrompt, transcript)
       : buildInterviewContext(settingsForPrompt, mode, transcript);
+    contextBlock = assemblePersonaContext(contextBlock, settingsForPrompt);
 
     // Without this the prompt still says "a screenshot is attached", so the model
     // hunts for an image that was never sent and asks the user to describe their
