@@ -1278,13 +1278,28 @@
     return (fresh * rate.in + totals.cachedTokens * rate.cachedIn + totals.completionTokens * rate.out) / 1e6;
   }
 
+  // Background insight calls are forced to the cheap model even when Smart is on,
+  // so pricing the whole session at the Smart rate overstates the spend several
+  // times over. Each model pays its own rate; one unpriced model voids the total
+  // rather than silently reporting a fraction of it.
+  function estimateSessionCost(byModel) {
+    const entries = Object.entries(byModel || {});
+    if (!entries.length) return null;
+    let sum = 0;
+    for (const [model, totals] of entries) {
+      const cost = estimateCost(totals, model);
+      if (cost === null) return null;
+      sum += cost;
+    }
+    return sum;
+  }
+
   cue.on('usage:update', (totals) => {
     const bar = $('#usage-bar');
     if (!bar) return;
     bar.classList.remove('hidden');
-    const model = (settings && settings.models && settings.models[settings.provider]
-      && settings.models[settings.provider][settings.smart ? 'smart' : 'fast']) || '';
-    const cost = estimateCost(totals, model);
+    const models = Object.keys(totals.byModel || {});
+    const cost = estimateSessionCost(totals.byModel);
     const cachedPct = totals.promptTokens
       ? Math.round((totals.cachedTokens / totals.promptTokens) * 100) : 0;
     const parts = [
@@ -1296,8 +1311,8 @@
     if (cost !== null) parts.push(`~$${cost.toFixed(4)}`);
     $('#usage-text').textContent = parts.join(' · ');
     $('#usage-bar').title = cost === null
-      ? 'Token usage this session. No price on file for ' + (model || 'this model') + '.'
-      : 'Estimated from published rates for ' + model + '. Check your provider dashboard for the real figure.';
+      ? 'Token usage this session. No price on file for ' + (models.join(', ') || 'this model') + '.'
+      : 'Estimated from published rates for ' + models.join(', ') + '. Check your provider dashboard for the real figure.';
   });
 
   function updateSmartTooltip() {
@@ -1529,6 +1544,14 @@
     settings.minimaxRegion = b.dataset.region;
     document.querySelectorAll('#minimax-region-seg button').forEach((x) => x.classList.toggle('on', x === b));
   }));
+  // These mirror the overlay's mode menu, so they route through setPersona and
+  // save immediately rather than waiting for the Settings Save button.
+  document.querySelectorAll('#persona-seg button').forEach((b) => b.addEventListener('click', () => {
+    setPersona(b.dataset.persona, settings.aggression || 2);
+  }));
+  document.querySelectorAll('#aggression-seg button').forEach((b) => b.addEventListener('click', () => {
+    setPersona(settings.persona || 'interview', Number(b.dataset.aggression));
+  }));
 
   // Persona and aggression live on the overlay because they are decided
   // mid-meeting. Like #smart-toggle they save immediately rather than waiting
@@ -1550,6 +1573,17 @@
   };
 
   const AGGRESSION_LABELS = { 1: 'Gentle', 2: 'Curious', 3: 'Direct', 4: 'Pointed', 5: 'Blunt' };
+
+  // Only the <span class="lbl"> text changes; the button's data-mode is what the
+  // main process acts on and must stay untouched.
+  function applyPersonaButtonLabels(persona) {
+    const labels = PERSONA_BUTTON_LABELS[persona];
+    if (!labels) return;
+    Object.entries(labels).forEach(([mode, text]) => {
+      const el = document.querySelector('.act[data-mode="' + mode + '"] .lbl');
+      if (el) el.textContent = text;
+    });
+  }
 
   function syncPersonaUI() {
     const persona = settings.persona || 'interview';
@@ -1608,9 +1642,20 @@
   }
 
   const modeMenu = $('#mode-menu');
+  const closeModeMenu = () => { if (modeMenu) modeMenu.classList.remove('open'); };
   if (modeMenu) {
+    $('#mode-trigger').addEventListener('click', () => {
+      modeMenu.classList.toggle('open');
+    });
+
     modeMenu.querySelectorAll('.mode-item').forEach((item) => item.addEventListener('click', () => {
       setPersona(item.dataset.persona, null);
+      closeModeMenu();
+    }));
+    modeMenu.querySelectorAll('.sub-item').forEach((item) => item.addEventListener('click', (event) => {
+      event.stopPropagation();
+      setPersona('attack', Number(item.dataset.aggression));
+      closeModeMenu();
     }));
 
     const aggressionRange = $('#aggression-range');
@@ -1624,6 +1669,7 @@
       aggressionRange.addEventListener('change', (event) => {
         event.stopPropagation();
         setPersona('attack', Number(aggressionRange.value));
+        closeModeMenu();
       });
       // Clicking the track must not also fire the parent Fact-check row.
       aggressionRange.addEventListener('click', (event) => event.stopPropagation());
@@ -1841,8 +1887,13 @@
 
   // ---- global keys -------------------------------------------------------
   document.addEventListener('keydown', (e) => {
+    if (e.key === 'Escape') closeModeMenu();
     if (e.key === 'Escape' && !scrim.classList.contains('hidden')) closeSettings();
     if ((e.metaKey || e.ctrlKey) && e.key === ',') { e.preventDefault(); openSettings(); }
+  });
+
+  document.addEventListener('click', (event) => {
+    if (modeMenu && !modeMenu.contains(event.target)) closeModeMenu();
   });
 
   // ---- click-through: only the UI blocks the mouse; empty gaps pass to your screen ----
@@ -1850,7 +1901,7 @@
   function setIgnore(v) { if (v !== ignoring) { ignoring = v; cue.setIgnoreMouse(v); } }
   document.addEventListener('mousemove', (e) => {
     const el = document.elementFromPoint(e.clientX, e.clientY);
-    const overUI = !!(el && el.closest && el.closest('#toolbar, #panel-wrap, #transcript-sidebar, #settings-scrim, #onboard-scrim, #consent-scrim'));
+    const overUI = !!(el && el.closest && el.closest('#toolbar, #panel-wrap, #mode-menu, #insights-panel, #transcript-sidebar, #settings-scrim, #onboard-scrim, #consent-scrim'));
     setIgnore(!overUI);
   });
   setIgnore(true); // start fully click-through; hovering the panel re-enables it

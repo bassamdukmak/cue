@@ -865,10 +865,8 @@ button:focus { outline: none; }
   color: #fff;
 }
 
-/* ==================== Mode menu (overlay, hover-opened) ==================== */
-/* Opens upward: it sits at the bottom of the panel, and a downward menu would
-   fall outside the window. Hover rather than click, so switching mode mid-
-   sentence costs no clicks. */
+/* ===================== Mode menu (overlay, click-opened) ===================== */
+/* Opens upward because it sits at the bottom of the panel. */
 .mode-menu { position: relative; display: inline-flex; }
 
 .mode-trigger {
@@ -895,12 +893,7 @@ button:focus { outline: none; }
   box-shadow: 0 12px 32px rgba(0,0,0,0.45);
   backdrop-filter: blur(20px);
 }
-.mode-menu:hover .mode-list { display: flex; }
-/* Bridges the gap above the trigger so the menu does not flicker shut on the
-   way to it. */
-.mode-menu::after {
-  content: ''; position: absolute; bottom: 100%; left: 0; right: 0; height: 8px;
-}
+.mode-menu.open .mode-list { display: flex; }
 
 .mode-item {
   position: relative; display: flex; align-items: baseline; gap: 8px;

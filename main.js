@@ -56,6 +56,9 @@ let sttDisabled = false; // set when the key can't reach any speech model (stops
 const buffers = { you: [], them: [] };
 const transcript = []; // { channel, text, ts } — capped at MAX_TRANSCRIPT_TURNS
 const MAX_TRANSCRIPT_TURNS = 200; // ~30–40 minutes of conversation at normal pace
+// Counts every turn ever pushed. transcript.length stops growing at the cap, so
+// only this can tell "something new was said" apart from "still 200 turns".
+let transcriptSeq = 0;
 const FLUSH_MS = 900;
 const STREAM_INACTIVITY_MS = 25000; // abort a stalled LLM stream so state.busy can't wedge forever
 const MIN_BYTES = Math.floor(16000 * 2 * 0.12); // ~0.12s
@@ -94,6 +97,7 @@ const ringBuffers = {
 
 function pushTranscript(turn) {
   transcript.push(turn);
+  transcriptSeq += 1;
   if (transcript.length > MAX_TRANSCRIPT_TURNS) transcript.splice(0, transcript.length - MAX_TRANSCRIPT_TURNS);
 }
 
@@ -141,6 +145,10 @@ function scheduleAutoSuggest() {
 // this cost me". Reported straight from the provider's own usage numbers, never
 // estimated from string lengths.
 const usageTotals = { promptTokens: 0, cachedTokens: 0, completionTokens: 0, calls: 0 };
+// Background insight calls are forced to the cheap tier while the user may have
+// Smart on, so a single blended total cannot be priced correctly. Keep the split
+// by model and let the renderer apply each model's own rate.
+const usageByModel = {};
 
 function recordUsage(usage) {
   if (!usage) return;
@@ -148,7 +156,13 @@ function recordUsage(usage) {
   usageTotals.cachedTokens += usage.cachedTokens || 0;
   usageTotals.completionTokens += usage.completionTokens || 0;
   usageTotals.calls += 1;
-  send('usage:update', { ...usageTotals });
+  const key = usage.model || 'unknown';
+  const per = usageByModel[key] || (usageByModel[key] = { promptTokens: 0, cachedTokens: 0, completionTokens: 0, calls: 0 });
+  per.promptTokens += usage.promptTokens || 0;
+  per.cachedTokens += usage.cachedTokens || 0;
+  per.completionTokens += usage.completionTokens || 0;
+  per.calls += 1;
+  send('usage:update', { ...usageTotals, byModel: JSON.parse(JSON.stringify(usageByModel)) });
 }
 
 // -------- live insights panel --------
@@ -160,12 +174,17 @@ const INSIGHTS_MAX_LINES = 40;
 let insightsTimer = null;
 let insightsBusy = false;
 let insightsShown = [];   // every line already on the panel, to avoid repeats
-let insightsLastTurnCount = 0;
+// Compared against transcriptSeq, not transcript.length: the transcript is
+// capped, so its length pins at the cap and would look permanently unchanged.
+let insightsLastSeq = 0;
+// Bumped by resetInsights so a run started under the old persona/transcript
+// cannot repaint stale lines onto the cleared panel when it finally resolves.
+let insightsGeneration = 0;
 
 async function runInsights() {
   if (insightsBusy) return;
   // Nothing new was said, so there is nothing to add and no reason to pay for a call.
-  if (transcript.length === insightsLastTurnCount) return;
+  if (transcriptSeq === insightsLastSeq) return;
 
   const settings = store.getSettings();
   if (!settings.autoSuggest) return;
@@ -175,11 +194,14 @@ async function runInsights() {
   if (!llm.ready) return;
 
   insightsBusy = true;
-  insightsLastTurnCount = transcript.length;
+  const previousSeq = insightsLastSeq;
+  const generation = insightsGeneration;
+  insightsLastSeq = transcriptSeq;
   try {
     const system = buildInsightsSystem(settings.persona || 'interview');
     const turn = buildInsightsTurn(transcript, insightsShown);
     const reply = await llm.stream({ system, turns: [{ role: 'user', text: turn }], onToken: () => {}, onUsage: recordUsage });
+    if (generation !== insightsGeneration) return;
     const { insights, actions } = parseInsights(reply);
     const fresh = [...insights, ...actions].filter((line) => !insightsShown.includes(line));
     if (!fresh.length) return;
@@ -190,7 +212,9 @@ async function runInsights() {
     });
   } catch (e) {
     // A failed panel refresh is not worth interrupting the user over; the next
-    // tick tries again on its own.
+    // tick tries again on its own — which it can only do if these turns are
+    // handed back as still unanalysed.
+    if (generation === insightsGeneration) insightsLastSeq = previousSeq;
     recordEvent({ level: 'warn', event: 'insights_failed', msg: (e && e.message) || String(e), frame: 'runInsights' });
   } finally {
     insightsBusy = false;
@@ -208,7 +232,8 @@ function stopInsights() {
 
 function resetInsights() {
   insightsShown = [];
-  insightsLastTurnCount = 0;
+  insightsLastSeq = transcriptSeq;
+  insightsGeneration += 1;
   send('insights:clear', {});
 }
 
@@ -858,11 +883,21 @@ function registerShortcuts() {
 // especially in dev mode (unsigned / no proper app bundle).  As a fallback we
 // actually attempt a capture and inspect the thumbnail — if it contains any
 // non-zero pixel data, macOS is giving us real screen content, i.e. granted.
-async function verifyScreenAccess() {
+// probe=false is the important default. The fallback below works by attempting a
+// real capture, and on macOS attempting a capture is precisely what raises the
+// Screen Recording dialog — so simply ASKING whether access exists used to
+// re-prompt the user on every launch and every "Check Again" press, even with
+// the permission already granted. Status reporting must therefore never probe;
+// only code that is genuinely about to use the screen may pass probe=true.
+async function verifyScreenAccess({ probe = false } = {}) {
   const sysStatus = systemPreferences.getMediaAccessStatus('screen');
   if (sysStatus === 'granted') return 'granted';
+  if (!probe) return sysStatus;
 
   // Fallback: try an actual capture and check the thumbnail for real pixels.
+  // Note this is not conclusive — recent macOS can return a black thumbnail even
+  // when access was granted, which is why a negative result here is treated as
+  // "unknown" rather than as a denial the user has to go and fix.
   try {
     const sources = await desktopCapturer.getSources({
       types: ['screen'],
@@ -895,14 +930,15 @@ async function requestPermissions() {
     await systemPreferences.askForMediaAccess('microphone');
   }
 
-  // Trigger the macOS screen-recording permission dialog (first-use only).
-  // There is no askForMediaAccess('screen'), but attempting to enumerate
-  // sources via desktopCapturer will cause macOS to prompt the user.
-  const screenStatus = await verifyScreenAccess();
-  if (screenStatus !== 'granted') {
-    try { await desktopCapturer.getSources({ types: ['screen'] }); } catch (_) {}
-  }
-
+  // Deliberately does NOT force the screen-recording prompt here.
+  //
+  // There is no askForMediaAccess('screen'); the only way to raise that dialog is
+  // to attempt a capture. Doing that at startup meant every launch re-asked,
+  // because verifyScreenAccess() returns a false negative even when the grant is
+  // present — the capture fallback reads a black thumbnail on recent macOS and
+  // concludes "denied". Screen access is optional, so the prompt now happens
+  // naturally the first time a screen-reading mode actually captures, and never
+  // otherwise.
   const status = await getPermissionStatus();
   // Only the microphone blocks startup; screen-reading modes degrade on their own.
   return status.mic === 'granted';
@@ -973,6 +1009,10 @@ function launchApp() {
 
   createWindow();
   registerShortcuts();
+  // Auto is restored from disk without ever passing through settings:set, so the
+  // panel's timer has to be started here too or a session that boots with Auto
+  // already on shows the panel and never fills it.
+  if (store.getSettings().autoSuggest) startInsights();
 }
 
 // -------- lifecycle --------

@@ -337,3 +337,20 @@ test('the transcript travels in the user turn, not the system prompt', () => {
   assert.doesNotMatch(def.buildSystem(def.buildContext({ aggression: 2 }, turns), ''), /unique-marker-9f3a/);
   assert.match(def.build({ transcript: turns, userText: '' }), /unique-marker-9f3a/);
 });
+
+test('checking screen status must never trigger a capture', () => {
+  // On macOS the only way to raise the Screen Recording dialog is to attempt a
+  // capture, so a status check that probes re-asks the user on every launch —
+  // observed in the wild with the permission already granted.
+  const source = mainSource;
+  const fn = source.slice(source.indexOf('async function verifyScreenAccess'));
+  const body = fn.slice(0, fn.indexOf('\n}\n'));
+  assert.match(body, /probe = false/, 'probing is not opt-in');
+  assert.match(body, /if \(!probe\) return sysStatus;/, 'a non-probing check can still reach getSources');
+  // Startup must not force the dialog either.
+  assert.doesNotMatch(
+    source,
+    /screenStatus !== 'granted'\s*\)\s*\{\s*try \{ await desktopCapturer/,
+    'startup force-triggers the screen prompt again',
+  );
+});

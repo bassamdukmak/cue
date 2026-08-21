@@ -174,7 +174,7 @@ function normalizeAzureBaseURL(raw) {
   return u;
 }
 
-async function streamAzure({ apiKey, model, system, turns, imageDataUrl, maxTokens, onToken, endpoint }) {
+async function streamAzure({ apiKey, model, system, turns, imageDataUrl, maxTokens, onToken, onUsage, endpoint }) {
   const url = normalizeAzureBaseURL(endpoint);
   if (!url) throw new Error('Missing Azure endpoint. Add your Azure AI Foundry or Azure OpenAI endpoint in Settings.');
   const messages = [{ role: 'system', content: system }];
@@ -204,16 +204,20 @@ async function streamAzure({ apiKey, model, system, turns, imageDataUrl, maxToke
     };
     client = new OpenAI({ baseURL: url, apiKey, fetch: azureFetch });
   }
-  const stream = await client.chat.completions.create({ model, messages, stream: true, max_completion_tokens: maxTokens });
+  const stream = await client.chat.completions.create({
+    model, messages, stream: true, max_completion_tokens: maxTokens,
+    stream_options: { include_usage: true },
+  });
   let full = '';
   for await (const part of stream) {
     const d = part.choices && part.choices[0] && part.choices[0].delta && part.choices[0].delta.content;
     if (d) { full += d; onToken(d); }
+    if (part.usage && onUsage) onUsage(normalizeUsage(part.usage, model));
   }
   return full;
 }
 
-async function streamAnthropic({ apiKey, model, system, turns, imageDataUrl, maxTokens, onToken }) {
+async function streamAnthropic({ apiKey, model, system, turns, imageDataUrl, maxTokens, onToken, onUsage }) {
   const Anthropic = require('@anthropic-ai/sdk');
   const client = new Anthropic({ apiKey });
   const messages = turns.map((t, i) => {
@@ -229,13 +233,23 @@ async function streamAnthropic({ apiKey, model, system, turns, imageDataUrl, max
   });
   const stream = await client.messages.create({ model, max_tokens: maxTokens, system, messages, stream: true });
   let full = '';
+  // Anthropic splits usage across two events: input counts on message_start,
+  // the final output count on message_delta. Report once, after both have landed.
+  const totals = { promptTokens: 0, cachedTokens: 0, completionTokens: 0 };
   for await (const ev of stream) {
     if (ev.type === 'content_block_delta' && ev.delta && ev.delta.type === 'text_delta') { full += ev.delta.text; onToken(ev.delta.text); }
+    const u = (ev.type === 'message_start' && ev.message && ev.message.usage) || (ev.type === 'message_delta' && ev.usage) || null;
+    if (u) {
+      totals.promptTokens += (u.input_tokens || 0) + (u.cache_read_input_tokens || 0);
+      totals.cachedTokens += u.cache_read_input_tokens || 0;
+      totals.completionTokens = u.output_tokens || totals.completionTokens;
+    }
   }
+  if (onUsage && (totals.promptTokens || totals.completionTokens)) onUsage({ model, ...totals });
   return full;
 }
 
-async function streamGemini({ apiKey, model, system, turns, imageDataUrl, maxTokens, onToken }) {
+async function streamGemini({ apiKey, model, system, turns, imageDataUrl, maxTokens, onToken, onUsage }) {
   const { GoogleGenAI } = require('@google/genai');
   const ai = new GoogleGenAI({ apiKey });
   const contents = turns.map((t, i) => {
@@ -251,9 +265,21 @@ async function streamGemini({ apiKey, model, system, turns, imageDataUrl, maxTok
     model, contents, config: { systemInstruction: system, maxOutputTokens: maxTokens }
   });
   let full = '';
+  // Gemini repeats cumulative counts on every chunk, so the last one seen is the
+  // total. Reported once at the end rather than added up per chunk.
+  let lastUsage = null;
   for await (const chunk of stream) {
     const t = chunk && chunk.text;
     if (t) { full += t; onToken(t); }
+    if (chunk && chunk.usageMetadata) lastUsage = chunk.usageMetadata;
+  }
+  if (onUsage && lastUsage) {
+    onUsage({
+      model,
+      promptTokens: lastUsage.promptTokenCount || 0,
+      cachedTokens: lastUsage.cachedContentTokenCount || 0,
+      completionTokens: lastUsage.candidatesTokenCount || 0,
+    });
   }
   return full;
 }
