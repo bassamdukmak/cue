@@ -1029,3 +1029,13 @@ button:focus { outline: none; }
   from { opacity: 0; transform: translateY(-3px); }
   to { opacity: 1; transform: none; }
 }
+
+/* Session usage. Replaces the interview-prep chips: what this has cost is a
+   more useful thing to see at a glance than whether a resume is filled in. */
+.usage-bar {
+  display: flex; align-items: center; gap: 6px;
+  margin-top: 8px; padding: 0 2px;
+  font-size: 10.5px; color: var(--tx-2);
+  font-variant-numeric: tabular-nums;
+}
+.usage-bar.hidden { display: none; }

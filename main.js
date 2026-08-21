@@ -136,6 +136,21 @@ function scheduleAutoSuggest() {
   }, AUTO_SUGGEST_QUIET_MS);
 }
 
+// -------- session usage --------
+// The user is billed per token, so the app has to be able to answer "what has
+// this cost me". Reported straight from the provider's own usage numbers, never
+// estimated from string lengths.
+const usageTotals = { promptTokens: 0, cachedTokens: 0, completionTokens: 0, calls: 0 };
+
+function recordUsage(usage) {
+  if (!usage) return;
+  usageTotals.promptTokens += usage.promptTokens || 0;
+  usageTotals.cachedTokens += usage.cachedTokens || 0;
+  usageTotals.completionTokens += usage.completionTokens || 0;
+  usageTotals.calls += 1;
+  send('usage:update', { ...usageTotals });
+}
+
 // -------- live insights panel --------
 // Runs on its own timer and deliberately does NOT touch state.busy: the panel
 // filling in must never block a button the user actually pressed, and a pressed
@@ -154,7 +169,9 @@ async function runInsights() {
 
   const settings = store.getSettings();
   if (!settings.autoSuggest) return;
-  const llm = createLLM(settings);
+  // Always the cheap model: this is a background bullet list, and a reasoning
+  // model would bill its thinking tokens for it every 20 seconds.
+  const llm = createLLM(settings, { forceTier: 'fast' });
   if (!llm.ready) return;
 
   insightsBusy = true;
@@ -162,7 +179,7 @@ async function runInsights() {
   try {
     const system = buildInsightsSystem(settings.persona || 'interview');
     const turn = buildInsightsTurn(transcript, insightsShown);
-    const reply = await llm.stream({ system, turns: [{ role: 'user', text: turn }], onToken: () => {} });
+    const reply = await llm.stream({ system, turns: [{ role: 'user', text: turn }], onToken: () => {}, onUsage: recordUsage });
     const { insights, actions } = parseInsights(reply);
     const fresh = [...insights, ...actions].filter((line) => !insightsShown.includes(line));
     if (!fresh.length) return;
@@ -655,7 +672,8 @@ async function runFeature(mode, userText) {
           system,
           turns: [{ role: 'user', text: built }],
           imageDataUrl,
-          onToken: (t) => { if (streamSettled) return; rearm(); send('llm:token', { text: t }); }
+          onToken: (t) => { if (streamSettled) return; rearm(); send('llm:token', { text: t }); },
+          onUsage: recordUsage
         }),
         stalled
       ]);

@@ -307,3 +307,33 @@ test('each persona watches for something different', () => {
 test('the panel may not add facts that were never said', () => {
   assert.match(buildInsightsSystem('attack'), /Never add a fact, figure, date or name that was not/i);
 });
+
+const { formatTranscript } = require('../src/prompts');
+
+test('system prompts are byte-stable per mode, so a prefix cache can hit', () => {
+  // DeepSeek and OpenAI cache on an exact prompt prefix. If the system prompt
+  // varied per call the cache could never hit and every token would bill full price.
+  const settings = { persona: 'attack', aggression: 3, roster: 'Dave | target |', documents: [] };
+  const def = resolveMode('attack', 'say');
+  const first = def.buildSystem(def.buildContext(settings, []), '');
+  const second = def.buildSystem(def.buildContext(settings, [{ channel: 'them', text: 'later turn' }]), '');
+  assert.equal(first, second, 'the transcript leaked into the system prompt and broke caching');
+});
+
+test('documents lead the prompt, where a cache can reuse them', () => {
+  const settings = {
+    persona: 'attack', aggression: 3, roster: 'Dave | target |',
+    documents: [{ name: 'spec.pdf', text: 'x'.repeat(500) }],
+  };
+  const def = resolveMode('attack', 'say');
+  const system = def.buildSystem(def.buildContext(settings, []), '');
+  // The largest, most stable block has to sit at the front or it cannot be cached.
+  assert.ok(system.indexOf('Reference documents') < 40, 'documents are not at the prompt head');
+});
+
+test('the transcript travels in the user turn, not the system prompt', () => {
+  const turns = [{ channel: 'them', text: 'unique-marker-9f3a' }];
+  const def = resolveMode('attack', 'say');
+  assert.doesNotMatch(def.buildSystem(def.buildContext({ aggression: 2 }, turns), ''), /unique-marker-9f3a/);
+  assert.match(def.build({ transcript: turns, userText: '' }), /unique-marker-9f3a/);
+});

@@ -1257,23 +1257,48 @@
   }
   const aiRulesEl = document.getElementById('ai-rules');
   if (aiRulesEl) aiRulesEl.addEventListener('input', updateAiRulesCounter);
-  function updatePrepStatus() {
-    if (!settings) return;
-    const fields = {
-      resume:  !!(settings.resumeText && settings.resumeText.trim()),
-      jd:      !!(settings.jobDescription && settings.jobDescription.trim()),
-      stories: !!(settings.starStories && settings.starStories.trim()),
-      salary:  !!(settings.salaryTarget && settings.salaryTarget.trim())
-    };
-    document.querySelectorAll('#prep-status .prep-item').forEach((el) => {
-      const loaded = fields[el.dataset.field];
-      el.classList.toggle('loaded', loaded);
-      el.classList.toggle('missing', !loaded);
-      el.title = loaded
-        ? el.textContent.trim() + ' loaded'
-        : el.textContent.trim() + ' not set — add in Settings';
-    });
+  // The interview-prep chips are gone; this row now reports what the session has
+  // actually spent, which is the number the user is exposed to.
+  function updatePrepStatus() { /* replaced by the usage bar */ }
+
+  // Per-million-token rates, input then output. Only for the models cue is
+  // actually pointed at — an unknown model shows tokens with no price rather
+  // than a confidently wrong number. Rates move, so this is labelled an estimate.
+  const MODEL_RATES = {
+    'deepseek-chat': { in: 0.27, cachedIn: 0.028, out: 1.10 },
+    'deepseek-reasoner': { in: 0.55, cachedIn: 0.14, out: 2.19 },
+    'gpt-4o-mini': { in: 0.15, cachedIn: 0.075, out: 0.60 },
+    'gpt-4o': { in: 2.50, cachedIn: 1.25, out: 10.00 },
+  };
+
+  function estimateCost(totals, model) {
+    const rate = MODEL_RATES[model];
+    if (!rate) return null;
+    const fresh = Math.max(0, totals.promptTokens - totals.cachedTokens);
+    return (fresh * rate.in + totals.cachedTokens * rate.cachedIn + totals.completionTokens * rate.out) / 1e6;
   }
+
+  cue.on('usage:update', (totals) => {
+    const bar = $('#usage-bar');
+    if (!bar) return;
+    bar.classList.remove('hidden');
+    const model = (settings && settings.models && settings.models[settings.provider]
+      && settings.models[settings.provider][settings.smart ? 'smart' : 'fast']) || '';
+    const cost = estimateCost(totals, model);
+    const cachedPct = totals.promptTokens
+      ? Math.round((totals.cachedTokens / totals.promptTokens) * 100) : 0;
+    const parts = [
+      `${totals.calls} call${totals.calls === 1 ? '' : 's'}`,
+      `${(totals.promptTokens / 1000).toFixed(1)}k in`,
+      `${(totals.completionTokens / 1000).toFixed(1)}k out`,
+    ];
+    if (totals.cachedTokens) parts.push(`${cachedPct}% cached`);
+    if (cost !== null) parts.push(`~$${cost.toFixed(4)}`);
+    $('#usage-text').textContent = parts.join(' · ');
+    $('#usage-bar').title = cost === null
+      ? 'Token usage this session. No price on file for ' + (model || 'this model') + '.'
+      : 'Estimated from published rates for ' + model + '. Check your provider dashboard for the real figure.';
+  });
 
   function updateSmartTooltip() {
     if (!settings) return;

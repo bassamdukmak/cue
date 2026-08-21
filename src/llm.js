@@ -113,7 +113,7 @@ function modelSupportsVision(model) {
   return !/deepseek|qwen-?turbo|^text-|moonshot-v1-(8|32|128)k$/i.test(String(model || ''));
 }
 
-async function streamOpenAI({ apiKey, baseURL, model, system, turns, imageDataUrl, maxTokens, onToken }) {
+async function streamOpenAI({ apiKey, baseURL, model, system, turns, imageDataUrl, maxTokens, onToken, onUsage }) {
   const supportsVision = modelSupportsVision(model);
   const OpenAI = require('openai');
   const client = new OpenAI(baseURL ? { apiKey, baseURL } : { apiKey });
@@ -131,13 +131,36 @@ async function streamOpenAI({ apiKey, baseURL, model, system, turns, imageDataUr
       messages.push({ role: t.role, content: t.text });
     }
   });
-  const stream = await client.chat.completions.create({ model, messages, stream: true, max_tokens: maxTokens });
+  const stream = await client.chat.completions.create({
+    model, messages, stream: true, max_tokens: maxTokens,
+    // Providers omit usage from streamed responses unless asked, and without it
+    // there is no way to tell the user what a session actually cost.
+    stream_options: { include_usage: true },
+  });
   let full = '';
   for await (const part of stream) {
     const d = part.choices && part.choices[0] && part.choices[0].delta && part.choices[0].delta.content;
     if (d) { full += d; onToken(d); }
+    // Arrives on the final chunk, after the last content delta.
+    if (part.usage && onUsage) onUsage(normalizeUsage(part.usage, model));
   }
   return full;
+}
+
+// DeepSeek reports cache hits as prompt_cache_hit_tokens; OpenAI nests the same
+// idea under prompt_tokens_details.cached_tokens. Normalise both so the caller
+// does not care which provider it is talking to.
+function normalizeUsage(usage, model) {
+  const prompt = usage.prompt_tokens || 0;
+  const cached = usage.prompt_cache_hit_tokens
+    || (usage.prompt_tokens_details && usage.prompt_tokens_details.cached_tokens)
+    || 0;
+  return {
+    model,
+    promptTokens: prompt,
+    cachedTokens: cached,
+    completionTokens: usage.completion_tokens || 0,
+  };
 }
 
 // Azure AI Foundry Models API (cognitiveservices.azure.com hosts) lives under
@@ -301,13 +324,16 @@ async function streamOllama({ apiKey, model, system, turns, imageDataUrl, maxTok
   return full;
 }
 
-function createLLM(settings) {
+// forceTier lets a background task opt out of the Smart toggle. A reasoning model
+// bills its thinking tokens, which is worth it for an answer the user is waiting
+// on and pure waste for a bullet list nobody asked for.
+function createLLM(settings, { forceTier } = {}) {
   const provider = settings.provider;
   const keys = settings.apiKeys || {};
   let apiKey = keys[provider];
   let baseURL = '';
   let configurationError = '';
-  const tier = settings.smart ? 'smart' : 'fast';
+  const tier = forceTier || (settings.smart ? 'smart' : 'fast');
   const models = settings.models || {};
   let model = (models[provider] || {})[tier];
   if (provider === 'gemini' && DEAD_GEMINI_MODEL_RE.test(model || '')) {
@@ -339,7 +365,7 @@ function createLLM(settings) {
   }
 
   const ready = !configurationError && !!model;
-  const maxTokens = settings.smart ? 1400 : 700;
+  const maxTokens = tier === 'smart' ? 1400 : 700;
 
   return {
     provider, model, apiKey, baseURL,
