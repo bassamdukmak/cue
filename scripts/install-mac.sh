@@ -17,6 +17,10 @@ if [ ! -x ".cache/whisper-runtime/darwin-arm64/whisper-server" ]; then
   echo "    (building whisper.cpp first — needs cmake)"
   npm run prepare:whisper
 fi
+if [ ! -x ".cache/ocr/cue-ocr" ]; then
+  echo "    (building local OCR runtime)"
+  npm run prepare:ocr
+fi
 CUE_BUNDLE_WHISPER=1 npm run pack
 
 # Spotlight indexes anything that looks like an app, so the build output shows up
