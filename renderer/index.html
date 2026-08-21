@@ -118,6 +118,20 @@
       </div>
     </div>
 
+    <!-- Live insights — floats on the LEFT, fills itself while Auto is on -->
+    <div id="insights-panel" class="insights-panel hidden">
+      <div class="ip-head">
+        <span class="ip-title">Live Insights</span>
+        <button class="ip-close-btn" id="insights-close-btn" title="Hide">−</button>
+      </div>
+      <div class="ip-body" id="insights-body">
+        <div class="ip-empty" id="insights-empty">Listening — insights appear as the meeting goes on.</div>
+        <div class="ip-list" id="insights-list"></div>
+        <div class="ip-section-title hidden" id="actions-title">Actions</div>
+        <div class="ip-list" id="actions-list"></div>
+      </div>
+    </div>
+
     <!-- Transcript history sidebar — floats OUTSIDE main panel, toggled by history button -->
     <div id="transcript-sidebar" class="transcript-sidebar hidden">
       <div class="ts-header">

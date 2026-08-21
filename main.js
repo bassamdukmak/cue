@@ -8,6 +8,7 @@ const { parseDocumentFile } = require('./src/resume');
 const { createLLM, modelSupportsVision } = require('./src/llm');
 const { MODES } = require('./src/prompts');
 const { resolveMode } = require('./src/personas');
+const { buildInsightsSystem, buildInsightsTurn, parseInsights } = require('./src/insights-prompts');
 const { rms16 } = require('./src/wav');
 const { createStreamingSTT } = require('./src/stt-streaming');
 const { AdaptiveVAD, AudioRingBuffer } = require('./src/vad');
@@ -133,6 +134,65 @@ function scheduleAutoSuggest() {
     autoSuggestLastRun = Date.now();
     runFeature('say', '');
   }, AUTO_SUGGEST_QUIET_MS);
+}
+
+// -------- live insights panel --------
+// Runs on its own timer and deliberately does NOT touch state.busy: the panel
+// filling in must never block a button the user actually pressed, and a pressed
+// button must never be delayed waiting for the panel.
+const INSIGHTS_INTERVAL_MS = 20000;
+const INSIGHTS_MAX_LINES = 40;
+let insightsTimer = null;
+let insightsBusy = false;
+let insightsShown = [];   // every line already on the panel, to avoid repeats
+let insightsLastTurnCount = 0;
+
+async function runInsights() {
+  if (insightsBusy) return;
+  // Nothing new was said, so there is nothing to add and no reason to pay for a call.
+  if (transcript.length === insightsLastTurnCount) return;
+
+  const settings = store.getSettings();
+  if (!settings.autoSuggest) return;
+  const llm = createLLM(settings);
+  if (!llm.ready) return;
+
+  insightsBusy = true;
+  insightsLastTurnCount = transcript.length;
+  try {
+    const system = buildInsightsSystem(settings.persona || 'interview');
+    const turn = buildInsightsTurn(transcript, insightsShown);
+    const reply = await llm.stream({ system, turns: [{ role: 'user', text: turn }], onToken: () => {} });
+    const { insights, actions } = parseInsights(reply);
+    const fresh = [...insights, ...actions].filter((line) => !insightsShown.includes(line));
+    if (!fresh.length) return;
+    insightsShown = insightsShown.concat(fresh).slice(-INSIGHTS_MAX_LINES);
+    send('insights:new', {
+      insights: insights.filter((line) => fresh.includes(line)),
+      actions: actions.filter((line) => fresh.includes(line)),
+    });
+  } catch (e) {
+    // A failed panel refresh is not worth interrupting the user over; the next
+    // tick tries again on its own.
+    recordEvent({ level: 'warn', event: 'insights_failed', msg: (e && e.message) || String(e), frame: 'runInsights' });
+  } finally {
+    insightsBusy = false;
+  }
+}
+
+function startInsights() {
+  if (insightsTimer) return;
+  insightsTimer = setInterval(runInsights, INSIGHTS_INTERVAL_MS);
+}
+
+function stopInsights() {
+  if (insightsTimer) { clearInterval(insightsTimer); insightsTimer = null; }
+}
+
+function resetInsights() {
+  insightsShown = [];
+  insightsLastTurnCount = 0;
+  send('insights:clear', {});
 }
 
 function publishTranscript(channel, text) {
@@ -615,7 +675,17 @@ async function runFeature(mode, userText) {
 
 // -------- IPC --------
 ipcMain.handle('settings:get', () => store.getSettings());
-ipcMain.handle('settings:set', (_e, patch) => { sttDisabled = false; return store.setSettings(patch); });
+ipcMain.handle('settings:set', (_e, patch) => {
+  sttDisabled = false;
+  const saved = store.setSettings(patch);
+  // The panel only runs while Auto is on — it is the same "work without being
+  // asked" opt-in, and it costs an API call per tick.
+  if (saved.autoSuggest) startInsights(); else stopInsights();
+  // Switching persona changes what the panel is watching for, so old lines no
+  // longer describe what is being tracked.
+  if (patch && patch.persona) resetInsights();
+  return saved;
+});
 ipcMain.handle('capture:toggle', () => {
   const targetState = !desiredCaptureState;
   desiredCaptureState = targetState;
@@ -671,6 +741,7 @@ ipcMain.handle('platform:info', () => ({
 }));
 ipcMain.handle('transcript:clear', () => {
   transcript.splice(0, transcript.length);
+  resetInsights();
   return { ok: true };
 });
 ipcMain.on('ask', (_e, payload) => runFeature(payload.mode, payload.text));

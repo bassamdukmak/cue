@@ -267,3 +267,43 @@ test('attack modes refuse to invent a topic when nothing was claimed', () => {
     assert.match(def.buildSystem(null, ''), /Never invent a scenario/i, `${name} may invent context`);
   }
 });
+
+const { parseInsights, buildInsightsSystem, buildInsightsTurn } = require('../src/insights-prompts');
+
+test('the insights panel only accepts prefixed lines', () => {
+  // A stray sentence of preamble must not end up rendered as an insight.
+  const parsed = parseInsights([
+    'Here is what I found:',
+    'INSIGHT: Inventory data is unreliable',
+    'ACTION: Ask what happens when numbers are off',
+    'random trailing chatter',
+  ].join('\n'));
+  assert.deepEqual(parsed.insights, ['Inventory data is unreliable']);
+  assert.deepEqual(parsed.actions, ['Ask what happens when numbers are off']);
+});
+
+test('an empty insights reply yields nothing rather than throwing', () => {
+  assert.deepEqual(parseInsights('').insights, []);
+  assert.deepEqual(parseInsights(null).actions, []);
+});
+
+test('insights are told not to repeat what is already shown', () => {
+  const turn = buildInsightsTurn([{ channel: 'them', text: 'hello' }], ['Already known thing']);
+  assert.match(turn, /do not repeat/i);
+  assert.match(turn, /Already known thing/);
+});
+
+test('each persona watches for something different', () => {
+  const seen = new Set();
+  for (const persona of ['interview', 'attack', 'negotiation', 'decode', 'standup']) {
+    const system = buildInsightsSystem(persona);
+    assert.match(system, /INSIGHT:/);
+    assert.match(system, /ACTION:/);
+    seen.add(system);
+  }
+  assert.equal(seen.size, 5, 'two personas share an insights prompt');
+});
+
+test('the panel may not add facts that were never said', () => {
+  assert.match(buildInsightsSystem('attack'), /Never add a fact, figure, date or name that was not/i);
+});

@@ -587,11 +587,60 @@
   const autoBtn = $('#auto-toggle');
   autoBtn.addEventListener('click', async () => {
     settings.autoSuggest = !settings.autoSuggest;
+    if (settings.autoSuggest) insightsDismissed = false;
     autoBtn.classList.toggle('on', settings.autoSuggest);
     await cue.settingsSet({ autoSuggest: settings.autoSuggest });
+    syncInsightsPanel();
     showStatus(settings.autoSuggest
       ? 'Auto on — suggesting whenever they pause. Each one is an API call.'
       : 'Auto off — suggestions only when you press a button.');
+  });
+
+  // ---- live insights panel ------------------------------------------------
+  // Fed by the main process on its own timer; this side only renders.
+  let insightsDismissed = false;
+
+  function syncInsightsPanel() {
+    const panel = $('#insights-panel');
+    if (!panel) return;
+    // The panel exists to show work done without being asked, so it follows Auto
+    // rather than being a third thing to remember to switch on.
+    panel.classList.toggle('hidden', !settings.autoSuggest || insightsDismissed);
+  }
+
+  function addInsightLines(lines, kind) {
+    const host = kind === 'action' ? $('#actions-list') : $('#insights-list');
+    if (!host || !lines.length) return;
+    // Everything already there becomes background; only the new lines are bright.
+    host.querySelectorAll('.ip-item').forEach((el) => el.classList.add('stale'));
+    for (const text of lines) {
+      const item = document.createElement('div');
+      item.className = 'ip-item' + (kind === 'action' ? ' action' : '');
+      item.textContent = text;
+      host.appendChild(item);
+    }
+    $('#insights-empty').classList.add('hidden');
+    if (kind === 'action') $('#actions-title').classList.remove('hidden');
+    // Newest sits at the bottom, so keep it in view.
+    $('#insights-body').scrollTop = $('#insights-body').scrollHeight;
+  }
+
+  cue.on('insights:new', ({ insights, actions }) => {
+    addInsightLines(insights || [], 'insight');
+    addInsightLines(actions || [], 'action');
+  });
+
+  cue.on('insights:clear', () => {
+    $('#insights-list').innerHTML = '';
+    $('#actions-list').innerHTML = '';
+    $('#actions-title').classList.add('hidden');
+    $('#insights-empty').classList.remove('hidden');
+  });
+
+  $('#insights-close-btn').addEventListener('click', () => {
+    insightsDismissed = true;
+    syncInsightsPanel();
+    showStatus('Insights hidden — toggle Auto off and on to bring it back.');
   });
 
   // Hide / collapse
@@ -1893,6 +1942,7 @@
     settings = await cue.settingsGet();
     syncPersonaUI();
     $('#auto-toggle').classList.toggle('on', !!settings.autoSuggest);
+    syncInsightsPanel();
     const platformInfo = await cue.platformInfo();
 
     // R4: shortcut hints
