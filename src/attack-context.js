@@ -39,10 +39,6 @@ const AGGRESSION = {
   5: 'Tone: blunt and final. Flat correction, no softeners and no apology. Example: "That is incorrect. It is X." Stay critical of the claim, never of the person.',
 };
 
-function aggressionLine(level) {
-  return AGGRESSION[level] || AGGRESSION[2];
-}
-
 // The transcript carries no speaker identity — every remote voice arrives on one
 // mixed channel — so the model has to infer who said what from names people use
 // out loud, and must say when it cannot.
@@ -114,9 +110,7 @@ function buildAttackContext(settings, _transcript) {
   const background = buildResumeBlock(settings.resumeText || '', 1000);
   if (background) parts.push('=== Your background ===\n' + background);
 
-  parts.push(aggressionLine(settings.aggression));
-
   return parts.length ? parts.join('\n\n') : null;
 }
 
-module.exports = { buildAttackContext, parseRoster, aggressionLine, buildDocumentsBlock, AGGRESSION };
+module.exports = { buildAttackContext, parseRoster, buildDocumentsBlock, AGGRESSION };

@@ -3,7 +3,8 @@ const assert = require('node:assert/strict');
 const { MODES } = require('../src/prompts');
 const { resolveMode, PERSONAS } = require('../src/personas');
 const { ATTACK_MODES } = require('../src/attack-prompts');
-const { buildAttackContext, parseRoster, aggressionLine, buildDocumentsBlock } = require('../src/attack-context');
+const { buildAttackContext, parseRoster, buildDocumentsBlock, AGGRESSION } = require('../src/attack-context');
+const { getIntensityLine, getIntensityMeta } = require('../src/intensity');
 
 // The guard that matters most: adding a persona must not alter the interview
 // path at all. Object identity catches any future accidental wrapping.
@@ -50,13 +51,17 @@ test('every attack prompt carries the no-search safety rules', () => {
   }
 });
 
-test('aggression changes the tone line and defaults sanely', () => {
-  assert.match(aggressionLine(1), /double-check|misremembering/i);
-  assert.match(aggressionLine(5), /blunt|incorrect/i);
-  assert.notEqual(aggressionLine(1), aggressionLine(5));
-  // Out-of-range values fall back to the mild default rather than throwing.
-  assert.equal(aggressionLine(99), aggressionLine(2));
-  assert.equal(aggressionLine(undefined), aggressionLine(2));
+test('intensity exposes five named levels and preserves attack prompt lines byte-for-byte', () => {
+  const attack = getIntensityMeta('attack');
+  assert.equal(attack.title, 'Aggression');
+  assert.deepEqual(attack.levels.map((level) => level.name), ['Gentle', 'Curious', 'Direct', 'Pointed', 'Blunt']);
+  for (const level of [1, 2, 3, 4, 5]) assert.equal(getIntensityLine('attack', level), AGGRESSION[level]);
+  assert.notEqual(getIntensityLine('attack', 1), getIntensityLine('attack', 5));
+  assert.equal(getIntensityLine('attack', 99), getIntensityLine('attack', 2));
+  assert.equal(getIntensityLine('interview', undefined), getIntensityLine('interview', 3));
+  for (const persona of ['interview', 'attack', 'negotiation', 'decode', 'standup']) {
+    assert.equal(getIntensityMeta(persona).levels.length, 5, `${persona} must expose five levels`);
+  }
 });
 
 test('roster parsing tolerates the messy lines a human actually types', () => {
@@ -79,21 +84,19 @@ test('roster notes survive pipes inside the note text', () => {
 });
 
 test('context warns the model that speakers are unlabelled', () => {
-  const context = buildAttackContext({ roster: 'Dave | target | x', aggression: 3 }, []);
+  const context = buildAttackContext({ roster: 'Dave | target | x' }, []);
   assert.match(context, /no speaker labels/i);
   assert.match(context, /attribution is uncertain/i);
 });
 
 test('context separates who to scrutinise from who to leave alone', () => {
-  const context = buildAttackContext({ roster: 'Dave | target |\nPriya | ally |', aggression: 3 }, []);
+  const context = buildAttackContext({ roster: 'Dave | target |\nPriya | ally |' }, []);
   assert.match(context, /Scrutinise these people closely:[\s\S]*Dave/);
   assert.match(context, /do not challenge these people:[\s\S]*Priya/);
 });
 
-test('documents-free context still returns the aggression line', () => {
-  const context = buildAttackContext({ aggression: 5 }, []);
-  assert.ok(context, 'context should never be empty — aggression always applies');
-  assert.match(context, /blunt/i);
+test('documents-free attack context stays empty when there is no persona-specific material', () => {
+  assert.equal(buildAttackContext({}, []), null);
 });
 
 test('patterns mode sends the whole transcript, not a recent window', () => {
@@ -149,12 +152,9 @@ test('documents lead the context so a cached prefix stays stable', () => {
   const context = buildAttackContext({
     documents: [{ name: 'spec.pdf', text: 'Latency budget is 200ms.' }],
     roster: 'Dave | target |',
-    aggression: 3,
   }, []);
   assert.ok(context.indexOf('Reference documents') < context.indexOf('People in this meeting'),
     'documents must come before the roster');
-  assert.ok(context.indexOf('Reference documents') < context.indexOf('Tone:'),
-    'documents must come before the aggression line');
 });
 
 const { modelSupportsVision } = require('../src/llm');
@@ -324,7 +324,7 @@ const { formatTranscript } = require('../src/prompts');
 test('system prompts are byte-stable per mode, so a prefix cache can hit', () => {
   // DeepSeek and OpenAI cache on an exact prompt prefix. If the system prompt
   // varied per call the cache could never hit and every token would bill full price.
-  const settings = { persona: 'attack', aggression: 3, roster: 'Dave | target |', documents: [] };
+  const settings = { persona: 'attack', intensity: { attack: 3 }, roster: 'Dave | target |', documents: [] };
   const def = resolveMode('attack', 'say');
   const first = def.buildSystem(def.buildContext(settings, []), '');
   const second = def.buildSystem(def.buildContext(settings, [{ channel: 'them', text: 'later turn' }]), '');
@@ -333,7 +333,7 @@ test('system prompts are byte-stable per mode, so a prefix cache can hit', () =>
 
 test('documents lead the prompt, where a cache can reuse them', () => {
   const settings = {
-    persona: 'attack', aggression: 3, roster: 'Dave | target |',
+    persona: 'attack', intensity: { attack: 3 }, roster: 'Dave | target |',
     documents: [{ name: 'spec.pdf', text: 'x'.repeat(500) }],
   };
   const def = resolveMode('attack', 'say');
@@ -345,7 +345,7 @@ test('documents lead the prompt, where a cache can reuse them', () => {
 test('the transcript travels in the user turn, not the system prompt', () => {
   const turns = [{ channel: 'them', text: 'unique-marker-9f3a' }];
   const def = resolveMode('attack', 'say');
-  assert.doesNotMatch(def.buildSystem(def.buildContext({ aggression: 2 }, turns), ''), /unique-marker-9f3a/);
+  assert.doesNotMatch(def.buildSystem(def.buildContext({}, turns), ''), /unique-marker-9f3a/);
   assert.match(def.build({ transcript: turns, userText: '' }), /unique-marker-9f3a/);
 });
 

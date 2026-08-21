@@ -44,7 +44,7 @@ const DEFAULTS = {
   // conversational modes for claim-challenging ones.
   autoSuggest: false,    // suggest automatically when the other side stops talking
   persona: 'interview',
-  aggression: 2,         // 1 = soften and hedge … 5 = flat correction
+  intensity: { interview: 3, attack: 2, negotiation: 3, decode: 3, standup: 3 },
   roster: '',            // one per line: "Name | ally|neutral|target | notes"
   documents: [],         // [{ name, text, chars }] reference files for fact-checking
   meetingGoal: '',       // short-lived outcome for the current meeting
@@ -88,10 +88,22 @@ function deepMerge(base, over) {
   return out;
 }
 
+function migrateSettings(stored) {
+  if (!stored || typeof stored !== 'object' || !Object.hasOwn(stored, 'aggression')) return stored;
+  const { aggression, intensity, ...withoutAggression } = stored;
+  return {
+    ...withoutAggression,
+    intensity: {
+      ...(intensity && typeof intensity === 'object' && !Array.isArray(intensity) ? intensity : {}),
+      attack: aggression,
+    },
+  };
+}
+
 function load() {
   if (data) return data;
   try {
-    data = deepMerge(DEFAULTS, JSON.parse(fs.readFileSync(FILE, 'utf8')));
+    data = deepMerge(DEFAULTS, migrateSettings(JSON.parse(fs.readFileSync(FILE, 'utf8'))));
   } catch (error) {
     if (error.code === 'ENOENT') {
       data = deepMerge(DEFAULTS, {});

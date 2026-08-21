@@ -1480,7 +1480,6 @@
     meetingGoal.value = settings.meetingGoal || '';
     updateGoalControl();
     document.querySelectorAll('#persona-seg button').forEach((b) => b.classList.toggle('on', b.dataset.persona === (settings.persona || 'interview')));
-    document.querySelectorAll('#aggression-seg button').forEach((b) => b.classList.toggle('on', Number(b.dataset.aggression) === (settings.aggression || 2)));
     updateAiRulesCounter();
     // Q&A tab
     $('#salary-target').value = settings.salaryTarget || '';
@@ -1610,18 +1609,22 @@
   // These mirror the overlay's mode menu, so they route through setPersona and
   // save immediately rather than waiting for the Settings Save button.
   document.querySelectorAll('#persona-seg button').forEach((b) => b.addEventListener('click', () => {
-    setPersona(b.dataset.persona, settings.aggression || 2);
-  }));
-  document.querySelectorAll('#aggression-seg button').forEach((b) => b.addEventListener('click', () => {
-    setPersona(settings.persona || 'interview', Number(b.dataset.aggression));
+    setPersona(b.dataset.persona);
   }));
 
-  // Persona and aggression live on the overlay because they are decided
+  // Persona and intensity live on the overlay because they are decided
   // mid-meeting. Like #smart-toggle they save immediately rather than waiting
   // for the Settings Save button.
   const PERSONA_LABELS = {
     interview: 'Interview', attack: 'Fact-check', negotiation: 'Negotiation',
     decode: 'Decode', standup: 'Standup',
+  };
+  const PERSONA_INTENSITIES = {
+    interview: { title: 'Presence', color: '#3C83F5', defaultLevel: 3, levels: [['Reserved', 'Let the evidence speak; do not sell too hard.'], ['Measured', 'Calmly connect relevant experience to the question.'], ['Confident', 'State strengths clearly and back them with proof.'], ['Persuasive', 'Make a direct case for the user’s fit.'], ['Bold', 'Lead with the strongest credible case for the user.']] },
+    attack: { title: 'Aggression', color: '#E0574A', defaultLevel: 2, levels: [['Gentle', 'Frame doubt as your own uncertainty.'], ['Curious', 'Ask for the source without passing judgment.'], ['Direct', 'State the disagreement plainly.'], ['Pointed', 'Name the gap in the reasoning.'], ['Blunt', 'Correct the claim without softeners.']] },
+    negotiation: { title: 'Firmness', color: '#E0A33F', defaultLevel: 3, levels: [['Accommodating', 'Prioritize rapport and workable options.'], ['Cooperative', 'Look for mutual gains and clear trade-offs.'], ['Balanced', 'Hold the position while staying flexible on the path.'], ['Firm', 'Make boundaries and asks explicit.'], ['Hardline', 'Protect the position without becoming personal or rude.']] },
+    decode: { title: 'Depth', color: '#3FBFA8', defaultLevel: 3, levels: [['Quick gloss', 'Give the shortest useful meaning.'], ['Clear', 'Explain the main point in plain language.'], ['Guided', 'Include the key reasoning and one useful example.'], ['Detailed', 'Cover important terms, logic, and implications.'], ['Thorough', 'Fully unpack the meaning, reasoning, and caveats.']] },
+    standup: { title: 'Stance', color: '#9B6BF2', defaultLevel: 3, levels: [['Modest', 'State progress without overselling or pushing back.'], ['Grounded', 'Explain scope and blockers with concrete facts.'], ['Clear', 'Make commitments, limits, and needs unambiguous.'], ['Firm', 'Defend the agreed scope and push back when needed.'], ['Assertive', 'Strongly defend scope and request a clear decision.']] },
   };
 
   // Button wording follows the persona: "Follow-up" means something different
@@ -1634,8 +1637,6 @@
     decode: { say: 'What does that mean?', assist: 'Read screen', followup: 'How to ask', recap: 'Glossary' },
     standup: { say: 'My update', assist: 'What to flag', followup: 'What to ask', recap: 'Commitments' },
   };
-
-  const AGGRESSION_LABELS = { 1: 'Gentle', 2: 'Curious', 3: 'Direct', 4: 'Pointed', 5: 'Blunt' };
 
   // Only the <span class="lbl"> text changes; the button's data-mode is what the
   // main process acts on and must stay untouched.
@@ -1650,72 +1651,59 @@
 
   function syncPersonaUI() {
     const persona = settings.persona || 'interview';
-    const aggression = settings.aggression || 2;
     const menu = $('#mode-menu');
     if (!menu) return;
 
-    // Fact-check carries its stance in the label — "Fact-check" alone does not
-    // say whether the next suggestion will hedge or flatly contradict someone.
-    $('#mode-trigger-label').textContent = persona === 'attack'
-      ? PERSONA_LABELS[persona] + ' · ' + AGGRESSION_LABELS[aggression]
-      : PERSONA_LABELS[persona];
+    $('#mode-trigger-label').textContent = PERSONA_LABELS[persona];
     menu.classList.toggle('active-persona', persona !== 'interview');
 
     menu.querySelectorAll('.mode-item').forEach((item) => item.classList.toggle('on', item.dataset.persona === persona));
-    renderAggression(aggression);
+    renderIntensity(persona, currentIntensity(persona));
 
     applyPersonaButtonLabels(persona);
     // Keep the Settings tab in step in case it is open behind the overlay.
     document.querySelectorAll('#persona-seg button').forEach((b) => b.classList.toggle('on', b.dataset.persona === persona));
-    document.querySelectorAll('#aggression-seg button').forEach((b) => b.classList.toggle('on', Number(b.dataset.aggression) === aggression));
   }
 
-  async function setPersona(persona, aggression) {
+  function currentIntensity(persona) {
+    const spec = PERSONA_INTENSITIES[persona] || PERSONA_INTENSITIES.interview;
+    const level = Number(settings.intensity && settings.intensity[persona]);
+    return Number.isInteger(level) && level >= 1 && level <= 5 ? level : spec.defaultLevel;
+  }
+
+  function renderIntensity(persona, level) {
+    const spec = PERSONA_INTENSITIES[persona] || PERSONA_INTENSITIES.interview;
+    const chosen = spec.levels[level - 1] || spec.levels[spec.defaultLevel - 1];
+    const control = $('#intensity-control');
+    control.dataset.persona = persona;
+    control.style.setProperty('--intensity-color', spec.color);
+    $('#intensity-label').textContent = spec.title + ' · ' + chosen[0];
+    $('#intensity-range').value = String(level);
+    $('#intensity-fill').style.clipPath = `inset(0 calc(100% - (13px + ${(level - 1) / 4} * (100% - 26px))) 0 0 round 999px)`;
+    $('#intensity-name').textContent = chosen[0];
+    $('#intensity-desc').textContent = chosen[1];
+    $('#intensity-low').textContent = spec.levels[0][0];
+    $('#intensity-high').textContent = spec.levels[4][0];
+  }
+
+  async function setPersona(persona) {
     const previousPersona = settings.persona;
-    const previousAggression = settings.aggression;
-    const patch = { persona };
-    if (aggression) {
-      patch.aggression = aggression;
-    }
     try {
-      settings = await cue.settingsSet(patch);
+      settings = await cue.settingsSet({ persona });
       syncPersonaUI();
-      showStatus(PERSONA_LABELS[persona] + (persona === 'attack' ? ' · ' + AGGRESSION_LABELS[settings.aggression] : '') + ' mode');
+      const spec = PERSONA_INTENSITIES[persona];
+      showStatus(PERSONA_LABELS[persona] + ' · ' + spec.title + ' ' + spec.levels[currentIntensity(persona) - 1][0]);
     } catch (error) {
       settings.persona = previousPersona;
-      settings.aggression = previousAggression;
       syncPersonaUI();
       showStatus('Could not change mode: ' + ((error && error.message) || 'settings were not saved.'));
     }
-  }
-
-  const AGGRESSION_DESC = {
-    1: 'frame it as my own doubt',
-    2: 'just ask for the source',
-    3: 'say plainly I disagree',
-    4: 'name the gap in their logic',
-    5: 'flat correction',
-  };
-
-  // Paints the slider's blue fill and labels. The <input type=range> supplies the
-  // thumb, dragging and arrow-key support; only the fill width is ours to draw.
-  function renderAggression(level) {
-    const range = $('#aggression-range');
-    if (!range) return;
-    range.value = String(level);
-    // Thumb centre travels between half a thumb-width from each end, so the fill
-    // has to follow the same inset or it drifts away from the thumb at the edges.
-    const fraction = (level - 1) / 4;
-    $('#agg-fill').style.width = `calc(13px + ${fraction} * (100% - 26px))`;
-    $('#agg-name').textContent = AGGRESSION_LABELS[level];
-    $('#agg-desc').textContent = AGGRESSION_DESC[level];
   }
 
   const modeMenu = $('#mode-menu');
   const closeModeMenu = () => {
     if (!modeMenu) return;
     modeMenu.classList.remove('open');
-    modeMenu.querySelector('.has-sub')?.classList.remove('submenu-open');
   };
   if (modeMenu) {
     $('#mode-trigger').addEventListener('click', () => {
@@ -1723,35 +1711,44 @@
       else modeMenu.classList.add('open');
     });
 
-    modeMenu.querySelectorAll('.mode-item:not(.has-sub)').forEach((item) => item.addEventListener('click', () => {
-      setPersona(item.dataset.persona, null);
+    modeMenu.querySelectorAll('.mode-item').forEach((item) => item.addEventListener('click', () => {
+      setPersona(item.dataset.persona);
       closeModeMenu();
     }));
-
-    const factCheck = modeMenu.querySelector('.mode-item.has-sub');
-    factCheck?.addEventListener('click', () => {
-      setPersona('attack', null);
-      factCheck.classList.toggle('submenu-open');
-    });
-
-    const aggressionRange = $('#aggression-range');
-    if (aggressionRange) {
-      // Live feedback while dragging; only commit on release, so a drag across
-      // the track does not write five settings updates.
-      aggressionRange.addEventListener('input', (event) => {
-        event.stopPropagation();
-        factCheck?.classList.add('submenu-open');
-        renderAggression(Number(aggressionRange.value));
-      });
-      aggressionRange.addEventListener('change', (event) => {
-        event.stopPropagation();
-        setPersona('attack', Number(aggressionRange.value));
-        closeModeMenu();
-      });
-      // Clicking the track must not also fire the parent Fact-check row.
-      aggressionRange.addEventListener('click', (event) => event.stopPropagation());
-    }
   }
+
+  const intensityControl = $('#intensity-control');
+  const intensityPopover = $('#intensity-popover');
+  const intensityRange = $('#intensity-range');
+  function closeIntensityPopover() {
+    intensityControl.classList.remove('open');
+    intensityPopover.classList.add('hidden');
+  }
+  $('#intensity-toggle').addEventListener('click', () => {
+    const opening = intensityPopover.classList.contains('hidden');
+    intensityControl.classList.toggle('open', opening);
+    intensityPopover.classList.toggle('hidden', !opening);
+    if (opening) intensityRange.focus();
+  });
+  intensityRange.addEventListener('input', () => {
+    renderIntensity(settings.persona || 'interview', Number(intensityRange.value));
+  });
+  intensityRange.addEventListener('change', async () => {
+    const persona = settings.persona || 'interview';
+    const previousIntensity = settings.intensity;
+    try {
+      settings = await cue.settingsSet({ intensity: { ...(settings.intensity || {}), [persona]: Number(intensityRange.value) } });
+      syncPersonaUI();
+      closeIntensityPopover();
+    } catch (error) {
+      settings.intensity = previousIntensity;
+      syncPersonaUI();
+      showStatus('Could not save intensity: ' + ((error && error.message) || 'settings were not saved.'));
+    }
+  });
+  document.addEventListener('click', (event) => {
+    if (!intensityControl.contains(event.target)) closeIntensityPopover();
+  });
 
   document.querySelectorAll('#stt-provider-seg button').forEach((button) => button.addEventListener('click', () => {
     settings.sttProvider = button.dataset.sttProvider;
@@ -1967,7 +1964,11 @@
 
   // ---- global keys -------------------------------------------------------
   document.addEventListener('keydown', (e) => {
-    if (e.key === 'Escape') closeModeMenu();
+    if (e.key === 'Escape') {
+      closeModeMenu();
+      closeIntensityPopover();
+      goalPopover.classList.add('hidden');
+    }
     if (e.key === 'Escape' && !scrim.classList.contains('hidden')) closeSettings();
     if ((e.metaKey || e.ctrlKey) && e.key === ',') { e.preventDefault(); openSettings(); }
   });
@@ -1981,7 +1982,7 @@
   function setIgnore(v) { if (v !== ignoring) { ignoring = v; cue.setIgnoreMouse(v); } }
   document.addEventListener('mousemove', (e) => {
     const el = document.elementFromPoint(e.clientX, e.clientY);
-    const overUI = !!(el && el.closest && el.closest('#toolbar, #panel-wrap, #mode-menu, #insights-panel, #transcript-sidebar, #settings-scrim, #onboard-scrim, #consent-scrim'));
+    const overUI = !!(el && el.closest && el.closest('#toolbar, #panel-wrap, #mode-menu, #goal-popover, #intensity-popover, #insights-panel, #transcript-sidebar, #settings-scrim, #onboard-scrim, #consent-scrim'));
     setIgnore(!overUI);
   });
   setIgnore(true); // start fully click-through; hovering the panel re-enables it

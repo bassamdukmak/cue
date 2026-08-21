@@ -28,6 +28,9 @@
       <span id="live-dot" class="off"></span>
       <div id="stt-status" class="stt-status stt-disconnected" title="STT connection status">off</div>
       <div id="panel" class="glass no-drag">
+        <div id="panel-grab" class="panel-grab drag-handle" title="Drag to move window" aria-label="Drag to move window">
+          <span class="drag-dots" aria-hidden="true"></span>
+        </div>
 
         <!-- Two-column layout: responses (left) + live transcript sidebar (right) -->
         <div id="panel-columns">
@@ -68,23 +71,8 @@
                     <button class="mode-item" data-persona="interview">
                       <span class="mode-name">Interview</span><span class="mode-hint">Help me answer well</span>
                     </button>
-                    <button class="mode-item has-sub" data-persona="attack">
+                    <button class="mode-item" data-persona="attack">
                       <span class="mode-name">Fact-check</span><span class="mode-hint">Challenge what they claim</span>
-                      <span class="mode-arrow">›</span>
-                      <span class="sub-list">
-                        <span class="agg-head">
-                          <span class="agg-name" id="agg-name">Curious</span>
-                          <span class="agg-desc" id="agg-desc">just ask for the source</span>
-                        </span>
-                        <span class="agg-slider">
-                          <span class="agg-track"><span class="agg-fill" id="agg-fill"></span></span>
-                          <span class="agg-dots">
-                            <i></i><i></i><i></i><i></i><i></i>
-                          </span>
-                          <input type="range" id="aggression-range" min="1" max="5" step="1" value="2" />
-                        </span>
-                        <span class="agg-ends"><span>Gentle</span><span>Blunt</span></span>
-                      </span>
                     </button>
                     <button class="mode-item" data-persona="negotiation">
                       <span class="mode-name">Negotiation</span><span class="mode-hint">Salary, vendors, contracts</span>
@@ -95,6 +83,23 @@
                     <button class="mode-item" data-persona="standup">
                       <span class="mode-name">Standup</span><span class="mode-hint">Track what I commit to</span>
                     </button>
+                  </div>
+                </div>
+                <div id="intensity-control" class="intensity-control">
+                  <button id="intensity-toggle" class="intensity-toggle" title="Adjust response intensity">
+                    <span id="intensity-label">Presence · Confident</span><span class="mode-chev">▾</span>
+                  </button>
+                  <div id="intensity-popover" class="intensity-popover hidden">
+                    <div class="intensity-head">
+                      <span class="intensity-name" id="intensity-name">Confident</span>
+                      <span class="intensity-desc" id="intensity-desc">State strengths clearly and back them with proof.</span>
+                    </div>
+                    <div class="intensity-slider">
+                      <span class="intensity-track"><span class="intensity-fill" id="intensity-fill"></span></span>
+                      <span class="intensity-dots"><i></i><i></i><i></i><i></i><i></i></span>
+                      <input type="range" id="intensity-range" min="1" max="5" step="1" value="3" aria-label="Response intensity" />
+                    </div>
+                    <div class="intensity-ends"><span id="intensity-low">Reserved</span><span id="intensity-high">Bold</span></div>
                   </div>
                 </div>
                 <button id="auto-toggle" class="smart-pill" title="Suggest automatically when the other side stops talking"><span>Auto</span></button>
@@ -125,7 +130,7 @@
 
     <!-- Live insights — floats on the LEFT, fills itself while Auto is on -->
     <div id="insights-panel" class="insights-panel hidden">
-      <div class="ip-head">
+      <div class="ip-head drag-handle">
         <span class="ip-title">Live Insights</span>
         <button class="ip-close-btn" id="insights-close-btn" title="Hide">−</button>
       </div>
@@ -139,7 +144,7 @@
 
     <!-- Transcript history sidebar — floats OUTSIDE main panel, toggled by history button -->
     <div id="transcript-sidebar" class="transcript-sidebar hidden">
-      <div class="ts-header">
+      <div class="ts-header drag-handle">
         <span class="ts-title">Conversation History</span>
         <button class="ts-close-btn" id="close-sidebar-btn" title="Close history">✕</button>
       </div>
@@ -320,16 +325,6 @@
           <button data-persona="attack">Fact-check</button>
         </div>
         <div class="s-note">Interview keeps every original prompt. Fact-check repoints the same buttons at challenging claims other people make.</div>
-
-        <label class="s-label" style="margin-top:14px;">How hard to push <span class="s-hint">only used in Fact-check mode</span></label>
-        <div class="s-seg s-seg-wrap" id="aggression-seg">
-          <button data-aggression="1">Gentle</button>
-          <button data-aggression="2">Curious</button>
-          <button data-aggression="3">Direct</button>
-          <button data-aggression="4">Pointed</button>
-          <button data-aggression="5">Blunt</button>
-        </div>
-        <div class="s-note">Gentle frames doubt as your own uncertainty. Blunt states a flat correction. cue always criticises the claim, never the person, and automatically softens when it is not confident.</div>
 
         <label class="s-label" style="margin-top:14px;">People <span class="s-hint">one per line: Name | ally, neutral or target | notes</span></label>
         <textarea id="roster" rows="6" spellcheck="false" placeholder="Dave | target | overstates latency numbers, cites blog posts as research&#10;Priya | ally | knows the billing system properly&#10;Sam | neutral |"></textarea>

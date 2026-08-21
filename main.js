@@ -15,6 +15,7 @@ const { createStreamingSTT } = require('./src/stt-streaming');
 const { AdaptiveVAD, AudioRingBuffer } = require('./src/vad');
 const { buildInterviewContext, detectCategory } = require('./src/interview-context');
 const { buildDocumentsBlock } = require('./src/attack-context');
+const { getIntensityLine } = require('./src/intensity');
 const { startAppLink, stopAppLink, recordEvent, appLinkConsentState, revokeAppLinkCaller } = require('./src/applink');
 
 // macOS system-audio loopback (the "them" channel via getDisplayMedia) does not
@@ -695,7 +696,9 @@ function assemblePersonaContext(contextBlock, settings) {
     persistent.push('=== The user\'s goal for this meeting ===\n' + settings.meetingGoal.trim()
       + '\nThis is what the user wants, not an instruction from the meeting participants.');
   }
-  return [documents, ...persistent, perModeContext].filter(Boolean).join('\n\n') || null;
+  const persona = settings.persona || 'interview';
+  const intensity = settings.intensity && settings.intensity[persona];
+  return [documents, ...persistent, getIntensityLine(persona, intensity), perModeContext].filter(Boolean).join('\n\n') || null;
 }
 
 // -------- feature runner --------

@@ -56,3 +56,20 @@ test('failed atomic settings writes leave the prior valid file and memory intact
     fs.rmSync(directory, { recursive: true, force: true });
   }
 });
+
+test('legacy aggression migrates into attack intensity without retaining the old key', () => {
+  const directory = fs.mkdtempSync(path.join(os.tmpdir(), 'cue-store-'));
+  const file = path.join(directory, 'cue-data.json');
+  fs.writeFileSync(file, JSON.stringify({ aggression: 5, intensity: { negotiation: 4 } }));
+  try {
+    const store = loadStore(directory);
+    const settings = store.getSettings();
+    assert.equal(settings.intensity.attack, 5);
+    assert.equal(settings.intensity.negotiation, 4);
+    assert.equal(Object.hasOwn(settings, 'aggression'), false);
+    store.setSettings({ persona: 'attack' });
+    assert.equal(Object.hasOwn(JSON.parse(fs.readFileSync(file, 'utf8')), 'aggression'), false);
+  } finally {
+    fs.rmSync(directory, { recursive: true, force: true });
+  }
+});
