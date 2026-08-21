@@ -47,3 +47,7 @@ test('a reset discards an insights run started before it', () => {
   assert.match(run, /const generation = insightsGeneration/, 'the generation is not captured before the await');
   assert.match(run, /generation !== insightsGeneration\) return/, 'a stale result is not discarded after the await');
 });
+
+test('stopping Auto also invalidates an in-flight insights run', () => {
+  assert.match(functionBody('stopInsights'), /insightsGeneration \+= 1/);
+});

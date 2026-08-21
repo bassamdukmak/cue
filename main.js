@@ -256,6 +256,7 @@ function startInsights() {
 
 function stopInsights() {
   if (insightsTimer) { clearInterval(insightsTimer); insightsTimer = null; }
+  insightsGeneration += 1;
 }
 
 function resetInsights() {
@@ -285,7 +286,7 @@ async function reportMissingLocalModel(settings) {
   const models = await whisperModelManager.listModels();
   if (models.some((model) => model.installed)) return false;
   send('stt:status', { provider: 'local', status: 'error' });
-  send('status', { message: MISSING_LOCAL_MODEL_MESSAGE, persistent: true });
+  send('status', { message: MISSING_LOCAL_MODEL_MESSAGE, persistent: true, key: 'local-model' });
   return true;
 }
 
@@ -611,6 +612,8 @@ async function setCapturing(active) {
 
   if (active) {
     sttDisabled = false; // reset on re-enable
+    resetAutoSuggestTrigger();
+    soloFallbackAnnounced = false;
     const settings = store.getSettings();
     if ((settings.sttProvider || 'auto') === 'local') {
       try {
@@ -621,6 +624,7 @@ async function setCapturing(active) {
           return false;
         }
         await startLocalWhisper(settings);
+        send('status', { message: '', persistent: true, key: 'local-model' });
         state.capturing = true;
         console.log('[cue] capture started, mode: local');
         send('capture:state', { active: true, streaming: false, mode: 'local' });
@@ -822,7 +826,11 @@ async function runFeature(mode, userText) {
 ipcMain.handle('settings:get', () => store.getSettings());
 ipcMain.handle('settings:set', (_e, patch) => {
   sttDisabled = false;
+  const previousSttProvider = store.getSettings().sttProvider;
   const saved = store.setSettings(patch);
+  if (patch && Object.hasOwn(patch, 'sttProvider') && saved.sttProvider !== previousSttProvider) {
+    send('status', { message: '', persistent: true, key: 'local-model' });
+  }
   // The panel only runs while Auto is on — it is the same "work without being
   // asked" opt-in, and it costs an API call per tick.
   if (saved.autoSuggest) startInsights(); else stopInsights();

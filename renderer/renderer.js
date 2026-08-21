@@ -1405,7 +1405,6 @@
 
   // ---- settings ----------------------------------------------------------
   const scrim = $('#settings-scrim');
-  function openSettings() { fillSettings(); scrim.classList.remove('hidden'); }
   async function closeSettings() {
     if (await saveSettings()) scrim.classList.add('hidden');
   }
@@ -1414,7 +1413,6 @@
     scrim.classList.remove('hidden');
     refreshWhisperModels();
   }
-  function closeSettings() { saveSettings(); scrim.classList.add('hidden'); }
   $('#more-btn').addEventListener('click', openSettings);
   $('#s-close').addEventListener('click', () => { void closeSettings(); });
   scrim.addEventListener('click', (e) => { if (e.target === scrim) void closeSettings(); });
@@ -1672,16 +1670,23 @@
     document.querySelectorAll('#aggression-seg button').forEach((b) => b.classList.toggle('on', Number(b.dataset.aggression) === aggression));
   }
 
-  function setPersona(persona, aggression) {
-    settings.persona = persona;
+  async function setPersona(persona, aggression) {
+    const previousPersona = settings.persona;
+    const previousAggression = settings.aggression;
     const patch = { persona };
     if (aggression) {
-      settings.aggression = aggression;
       patch.aggression = aggression;
     }
-    cue.settingsSet(patch);
-    syncPersonaUI();
-    showStatus(PERSONA_LABELS[persona] + (persona === 'attack' ? ' · ' + AGGRESSION_LABELS[settings.aggression] : '') + ' mode');
+    try {
+      settings = await cue.settingsSet(patch);
+      syncPersonaUI();
+      showStatus(PERSONA_LABELS[persona] + (persona === 'attack' ? ' · ' + AGGRESSION_LABELS[settings.aggression] : '') + ' mode');
+    } catch (error) {
+      settings.persona = previousPersona;
+      settings.aggression = previousAggression;
+      syncPersonaUI();
+      showStatus('Could not change mode: ' + ((error && error.message) || 'settings were not saved.'));
+    }
   }
 
   const AGGRESSION_DESC = {

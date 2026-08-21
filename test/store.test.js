@@ -36,14 +36,21 @@ test('corrupt settings are preserved and reported', () => {
   }
 });
 
-test('settings write failures leave the previous in-memory settings intact', () => {
+test('failed atomic settings writes leave the prior valid file and memory intact', () => {
   const directory = fs.mkdtempSync(path.join(os.tmpdir(), 'cue-store-'));
+  const file = path.join(directory, 'cue-data.json');
   const originalWriteFileSync = fs.writeFileSync;
   try {
     const store = loadStore(directory);
-    fs.writeFileSync = () => { throw new Error('disk full'); };
+    store.setSettings({ provider: 'gemini' });
+    fs.writeFileSync = (target, ...args) => {
+      if (target === `${file}.tmp`) throw new Error('disk full');
+      return originalWriteFileSync(target, ...args);
+    };
     assert.throws(() => store.setSettings({ provider: 'anthropic' }), /disk full/);
-    assert.equal(store.getSettings().provider, 'openai');
+    assert.equal(store.getSettings().provider, 'gemini');
+    assert.equal(JSON.parse(fs.readFileSync(file, 'utf8')).provider, 'gemini');
+    assert.equal(fs.existsSync(`${file}.tmp`), false);
   } finally {
     fs.writeFileSync = originalWriteFileSync;
     fs.rmSync(directory, { recursive: true, force: true });

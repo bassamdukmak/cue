@@ -111,7 +111,20 @@ function load() {
   return data;
 }
 function save(nextSettings) {
-  fs.writeFileSync(FILE, JSON.stringify(nextSettings, null, 2));
+  const tempFile = `${FILE}.tmp`;
+  try {
+    fs.writeFileSync(tempFile, JSON.stringify(nextSettings, null, 2));
+    const fd = fs.openSync(tempFile, 'r');
+    try {
+      fs.fsyncSync(fd);
+    } finally {
+      fs.closeSync(fd);
+    }
+    fs.renameSync(tempFile, FILE);
+  } catch (error) {
+    try { fs.rmSync(tempFile, { force: true }); } catch (_) {}
+    throw error;
+  }
   data = nextSettings;
 }
 

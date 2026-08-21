@@ -135,6 +135,16 @@ test('one huge document cannot crowd out the others', () => {
   assert.match(block, /the answer is 42/);
 });
 
+test('thirteen documents stay within the total document-text budget', () => {
+  const documents = Array.from({ length: 13 }, (_, index) => ({
+    name: `doc-${index}.txt`, text: 'x'.repeat(5000),
+  }));
+  const block = buildDocumentsBlock(documents);
+  const includedText = [...block.matchAll(/--- BEGIN DOCUMENT: .*? ---\n([\s\S]*?)\n--- END DOCUMENT:/g)]
+    .reduce((total, match) => total + match[1].length, 0);
+  assert.ok(includedText <= 12000, `included ${includedText} document characters`);
+});
+
 test('documents lead the context so a cached prefix stays stable', () => {
   const context = buildAttackContext({
     documents: [{ name: 'spec.pdf', text: 'Latency budget is 200ms.' }],
