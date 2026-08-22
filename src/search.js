@@ -18,21 +18,37 @@ const REST_COUNTRIES = 'https://restcountries.com/v3.1/name/';
 const NOMINATIM = 'https://nominatim.openstreetmap.org/search';
 const COINGECKO_PRICE = 'https://api.coingecko.com/api/v3/simple/price';
 const FRANKFURTER = 'https://api.frankfurter.app/';
-const USGS_EARTHQUAKES = 'https://earthquake.usgs.gov/fdsnws/event/1/query';
-const OPEN_LIBRARY = 'https://openlibrary.org/search.json';
 const WAYBACK = 'https://archive.org/wayback/available';
 const HN_ALGOLIA = 'https://hn.algolia.com/api/v1/search';
+const GITHUB_API = 'https://api.github.com';
+const NPM_REGISTRY = 'https://registry.npmjs.org/';
+const NPM_DOWNLOADS = 'https://api.npmjs.org/downloads/point/last-week/';
+const PYPI_API = 'https://pypi.org/pypi/';
+const EOL_API = 'https://endoflife.date/api/';
+const OSV_API = 'https://api.osv.dev/v1/query';
+const STACK_EXCHANGE = 'https://api.stackexchange.com/2.3/search/advanced';
+const AWS_PRICING = 'https://pricing.us-east-1.amazonaws.com/offers/v1.0/aws/index.json';
+const IETF_API = 'https://datatracker.ietf.org/api/v1/doc/document/';
+const BLS_API = 'https://api.bls.gov/publicAPI/v1/timeseries/data/';
+const OWID_GRAPHER = 'https://ourworldindata.org/grapher/';
 let tickerCache = null;
 
 function classify(query) {
   if (/\b(8-k|10-[qk]|20-f|40-f|sec filing|filed|filing|annual report|quarterly report)\b/i.test(query)) return 'filing';
   if (/\b(regulation|regulatory|rulemaking|final rule|proposed rule|federal register|agency action|effective date)\b/i.test(query)) return 'regulation';
   if (/\b(their site (?:used to )?said|site used to say|historical page|archived page|wayback|web archive)\b/i.test(query)) return 'wayback';
-  if (/\b(earthquake|seismic|tremor)\b/i.test(query)) return 'earthquake';
+  if (/\b(vulnerabilit(?:y|ies)|cve|insecure|security (?:issue|risk|advisory))\b/i.test(query)) return 'vulnerability';
+  if (/\b(end[- ]of[- ]life|\beol\b|supported version|support(?:ed)? until|ancient version)\b/i.test(query)) return 'eol';
+  if (/\b(rfc\s*\d+|ietf|\bspec(?:ification)?\b|internet standard)\b/i.test(query)) return 'standard';
+  if (/\b(aws|amazon web services|ec2|s3|lambda|rds)\b/i.test(query) && /\b(price|pricing|cost|hour|monthly)\b/i.test(query)) return 'aws';
+  if (/\b(wage|wages|salary|salaries|employment|jobs?|\bcpi\b|labou?r market|unemployment)\b/i.test(query) && /\b(us|u\.s\.|united states|american|america|cpi|wage|employment|labou?r)\b/i.test(query)) return 'bls';
+  if (/\b(global|worldwide|world|international|emissions|energy|health|education|population)\b/i.test(query) && /\b(statistic|percent|%|rate|trend|companies|people|countries|emissions|energy|health|education|population)\b/i.test(query)) return 'owid';
+  if (/\b(stack ?overflow|technical consensus|accepted answer|how (?:does|do|why)|why (?:does|do))\b/i.test(query)) return 'technical';
+  if (/\b(abandoned|deprecated|everyone uses|nobody uses|repository|repo|github)\b/i.test(query) || /\b[a-z0-9_.-]+\/[a-z0-9_.-]+\b/i.test(query)) return 'repo';
+  if (/\b(npm|pypi|pip|package|library|framework|dependency)\b/i.test(query)) return 'package';
   if (/\b(weather|temperature|rainfall|precipitation|climate|forecast)\b/i.test(query)) return 'weather';
   if (/\b(bitcoin|ethereum|crypto(?:currency)?|\bbtc\b|\beth\b)\b/i.test(query) && /\b(price|market cap|worth|value)\b/i.test(query)) return 'crypto';
   if (/\b(exchange rate|currency conversion|convert|foreign exchange|\bfx\b)\b/i.test(query)) return 'exchange';
-  if (/\b(book|author|isbn|novel|published by)\b/i.test(query)) return 'book';
   if (/\b(hacker news|\bhn\b|tech industry|tech launch|product launch|startup launch)\b/i.test(query)) return 'tech';
   if (/\b(recent news|latest news|did .+ happen|what happened)\b/i.test(query)) return 'news';
   if (/\b(place|distance|where is|where are|does .+ exist|location|located)\b/i.test(query)) return 'place';
@@ -260,25 +276,157 @@ async function frankfurter(query, options) {
   return frankfurterResult(await json(options.fetchImpl, url, options), from, to);
 }
 
-function usgsResult(feature) {
-  if (!feature?.properties?.title) return null;
-  return { summary: feature.properties.title + (feature.properties.time ? ' (' + new Date(feature.properties.time).toISOString() + ')' : '') + '.', source: 'USGS Earthquake', url: feature.properties.url || null };
+function packageName(query) {
+  const scoped = /(?:npm|pypi|pip)\s+(?:package\s+)?(?:named\s+)?(@?[a-z0-9][\w.-]*(?:\/[\w.-]+)?)/i.exec(query)?.[1]
+    || /(?:package|library|framework|dependency)\s+(?:named\s+)?(@?[a-z0-9][\w.-]*(?:\/[\w.-]+)?)/i.exec(query)?.[1];
+  return scoped || /\b(@?[a-z][\w.-]*(?:\/[\w.-]+)?)\s+(?:package|library|framework)\b/i.exec(query)?.[1] || null;
 }
-async function usgs(query, options) {
-  const url = new URL(USGS_EARTHQUAKES); url.search = new URLSearchParams({ format: 'geojson', limit: '1', orderby: 'time' });
-  const magnitude = /\b(?:magnitude|mag)\s*(\d+(?:\.\d+)?)/i.exec(query)?.[1]; if (magnitude) url.searchParams.set('minmagnitude', magnitude);
-  return usgsResult((await json(options.fetchImpl, url, options))?.features?.[0]);
+function githubRepo(query) { return /\b([\w.-]+)\/([\w.-]+)\b/.exec(query)?.slice(1).join('/') || null; }
+function githubResult(repo, release) {
+  if (!repo?.full_name) return null;
+  const details = [repo.stargazers_count != null && `${repo.stargazers_count} stars`, repo.pushed_at && `last commit ${repo.pushed_at.slice(0, 10)}`, release?.published_at && `latest release ${release.tag_name || release.name || ''} ${release.published_at.slice(0, 10)}`, repo.archived && 'archived', repo.open_issues_count != null && `${repo.open_issues_count} open issues`].filter(Boolean);
+  return { summary: `${repo.full_name}${details.length ? ': ' + details.join('; ') : ''}.`, source: 'GitHub', url: repo.html_url || `https://github.com/${repo.full_name}` };
+}
+async function github(query, options) {
+  const repoName = githubRepo(query) || packageName(query);
+  const headers = { Accept: 'application/vnd.github+json', 'User-Agent': 'cue-meeting-assistant', ...(options.apiKeys.github ? { Authorization: `Bearer ${options.apiKeys.github}` } : {}) };
+  const url = repoName ? `${GITHUB_API}/repos/${repoName}` : new URL(`${GITHUB_API}/search/repositories`);
+  if (!repoName) url.search = new URLSearchParams({ q: query, per_page: '1' });
+  const body = await json(options.fetchImpl, url, { ...options, headers });
+  const repo = repoName ? body : body?.items?.[0];
+  if (!repo?.full_name) return null;
+  const release = await json(options.fetchImpl, `${GITHUB_API}/repos/${repo.full_name}/releases/latest`, { ...options, headers });
+  return githubResult(repo, release);
+}
+function npmResult(body, downloads, pkg) {
+  const latest = body?.['dist-tags']?.latest, version = latest && body.versions?.[latest];
+  if (!latest || !version) return null;
+  const details = [`latest ${latest}`, body.time?.[latest] && `published ${body.time[latest].slice(0, 10)}`, version.deprecated && `deprecated: ${version.deprecated}`, Array.isArray(body.maintainers) && body.maintainers.length && `maintainers ${body.maintainers.map((x) => x.name).filter(Boolean).join(', ')}`, downloads?.downloads != null && `${downloads.downloads} downloads last week`].filter(Boolean);
+  return { summary: `${pkg}: ${details.join('; ')}.`, source: 'npm', url: `https://www.npmjs.com/package/${encodeURIComponent(pkg)}` };
+}
+async function npm(query, options) {
+  const pkg = packageName(query); if (!pkg) return null;
+  const body = await json(options.fetchImpl, NPM_REGISTRY + encodeURIComponent(pkg), options);
+  const downloads = await json(options.fetchImpl, NPM_DOWNLOADS + encodeURIComponent(pkg), options);
+  return npmResult(body, downloads, pkg);
+}
+function pypiResult(body, pkg) {
+  const info = body?.info, version = info?.version, release = version && body.releases?.[version]?.[0], upload = release?.upload_time_iso_8601;
+  if (!info?.name || !version) return null;
+  const details = [`latest ${version}`, upload && `published ${upload.slice(0, 10)}`, release?.yanked && 'yanked', info.maintainer && `maintainer ${info.maintainer}`].filter(Boolean);
+  return { summary: `${info.name}: ${details.join('; ')}.`, source: 'PyPI', url: info.package_url || `https://pypi.org/project/${encodeURIComponent(pkg)}/` };
+}
+async function pypi(query, options) {
+  const pkg = packageName(query); if (!pkg) return null;
+  return pypiResult(await json(options.fetchImpl, PYPI_API + encodeURIComponent(pkg) + '/json', options), pkg);
+}
+function eolResult(rows, product, query) {
+  const version = /\b\d+(?:\.\d+){0,2}\b/.exec(query)?.[0];
+  const list = Array.isArray(rows) ? rows : [];
+  const row = list.find((item) => version && (item.cycle === version || version.startsWith(item.cycle + '.'))) || list[0];
+  if (!row?.cycle) return null;
+  const supported = row.eol === false || (row.eol && new Date(row.eol) >= new Date());
+  return { summary: `${product} ${row.cycle}: ${supported ? 'supported' : 'end of life'}${row.eol ? `; EOL ${row.eol}` : ''}.`, source: 'endoflife.date', url: `https://endoflife.date/${encodeURIComponent(product)}` };
+}
+async function endOfLife(query, options) {
+  const product = /\b(?:eol|end[- ]of[- ]life|supported version)\s+(?:of\s+)?([\w.-]+)/i.exec(query)?.[1]
+    || /\b([a-z][\w.-]*)\s+\d+(?:\.\d+)*\s+(?:end[- ]of[- ]life|eol)\b/i.exec(query)?.[1] || packageName(query);
+  if (!product) return null;
+  return eolResult(await json(options.fetchImpl, EOL_API + encodeURIComponent(product) + '.json', options), product, query);
+}
+function osvResult(body, pkg, version) {
+  const vulns = body?.vulns; if (!Array.isArray(vulns)) return null;
+  return { summary: `${pkg}${version ? ' ' + version : ''}: ${vulns.length ? `${vulns.length} known vulnerabilities (${vulns.slice(0, 3).map((v) => v.id).join(', ')})` : 'no known vulnerabilities found'}.`, source: 'OSV.dev', url: vulns[0]?.references?.[0]?.url || 'https://osv.dev/' };
+}
+async function osv(query, options) {
+  const pkg = packageName(query), version = /\b\d+(?:\.\d+){1,3}\b/.exec(query)?.[0]; if (!pkg) return null;
+  const ecosystem = /\b(pypi|pip|python)\b/i.test(query) ? 'PyPI' : 'npm';
+  return osvResult(await json(options.fetchImpl, OSV_API, { ...options, method: 'POST', headers: { 'Content-Type': 'application/json', 'User-Agent': 'cue-meeting-assistant' }, body: JSON.stringify({ package: { name: pkg, ecosystem }, ...(version ? { version } : {}) }) }), pkg, version);
+}
+function stackExchangeResult(item) {
+  if (!item?.title) return null;
+  return { summary: `${item.title.replace(/<[^>]+>/g, '')}${item.is_answered ? '; answered' : ''}${item.score != null ? `; score ${item.score}` : ''}.`, source: 'Stack Exchange', url: item.link || null };
+}
+async function stackExchange(query, options) {
+  const url = new URL(STACK_EXCHANGE); url.search = new URLSearchParams({ site: 'stackoverflow', q: query, pagesize: '1', order: 'desc', sort: 'relevance' });
+  return stackExchangeResult((await json(options.fetchImpl, url, { ...options, headers: { 'User-Agent': 'cue-meeting-assistant' } }))?.items?.[0]);
 }
 
-function openLibraryResult(book) {
-  if (!book?.title) return null;
-  const author = book.author_name?.[0], year = book.first_publish_year, isbn = book.isbn?.[0];
-  const details = [author && 'by ' + author, year && String(year), isbn && 'ISBN ' + isbn].filter(Boolean).join(' — ');
-  return { summary: book.title + (details ? ' — ' + details : '') + '.', source: 'Open Library', url: book.key ? 'https://openlibrary.org' + book.key : 'https://openlibrary.org/search?q=' + encodeURIComponent(book.title) };
+function awsService(query) {
+  if (/\bec2\b/i.test(query)) return 'AmazonEC2'; if (/\bs3\b/i.test(query)) return 'AmazonS3';
+  if (/\blambda\b/i.test(query)) return 'AWSLambda'; if (/\brds\b/i.test(query)) return 'AmazonRDS';
+  return null;
 }
-async function openLibrary(query, options) {
-  const url = new URL(OPEN_LIBRARY); url.search = new URLSearchParams({ q: query, limit: '1' });
-  return openLibraryResult((await json(options.fetchImpl, url, options))?.docs?.[0]);
+async function cappedJson(fetchImpl, url, options, maxBytes = 1500000) {
+  const controller = new AbortController(), timer = setTimeout(() => controller.abort(), options.timeoutMs);
+  try {
+    const response = await fetchImpl(url, { signal: controller.signal });
+    if (!response.ok || Number(response.headers?.get?.('content-length') || 0) > maxBytes) return null;
+    const text = await response.text(); return text.length <= maxBytes ? JSON.parse(text) : null;
+  } catch (_) { return null; } finally { clearTimeout(timer); }
+}
+function awsResult(offer, service) {
+  const product = Object.values(offer?.products || {}).find((item) => item?.attributes?.servicecode === service || item?.attributes?.serviceCode === service);
+  if (!product?.attributes) return null;
+  const terms = Object.values(offer?.terms?.OnDemand || {}).find((term) => term?.sku === product.sku);
+  const dimension = terms && Object.values(terms.priceDimensions || {})[0];
+  const price = dimension?.pricePerUnit?.USD;
+  return { summary: `${product.attributes.productFamily || service}${price != null ? `: $${price} ${dimension.unit || ''}` : ' pricing offer found'}.`, source: 'AWS Pricing', url: `https://aws.amazon.com/${service.toLowerCase()}/pricing/` };
+}
+async function awsPricing(query, options) {
+  const service = awsService(query); if (!service) return null;
+  const index = await cappedJson(options.fetchImpl, AWS_PRICING, options, 500000);
+  const offer = index?.offers?.[service]; if (!offer?.currentRegionIndexUrl) return null;
+  return awsResult(await cappedJson(options.fetchImpl, new URL(offer.currentRegionIndexUrl, AWS_PRICING), options), service);
+}
+function ietfResult(row, rfc) {
+  if (!row?.name && !row?.title) return null;
+  return { summary: `${row.name || `RFC ${rfc}`}: ${row.title || row.abstract || 'IETF document'}${row.time ? `; ${String(row.time).slice(0, 10)}` : ''}.`, source: 'IETF Datatracker', url: row.resource_uri ? new URL(row.resource_uri, 'https://datatracker.ietf.org').href : `https://datatracker.ietf.org/doc/rfc${rfc}/` };
+}
+async function ietf(query, options) {
+  const rfc = /\brfc\s*(\d+)\b/i.exec(query)?.[1]; if (!rfc) return null;
+  const url = new URL(IETF_API); url.search = new URLSearchParams({ name: `rfc${rfc}` });
+  return ietfResult((await json(options.fetchImpl, url, { ...options, headers: { 'User-Agent': 'cue-meeting-assistant' } }))?.objects?.[0], rfc);
+}
+function rfcEditorResult(row, rfc) {
+  if (!row?.title && !row?.doc_id) return null;
+  return { summary: `${row.doc_id || `RFC ${rfc}`}: ${row.title}.`, source: 'RFC Editor', url: `https://www.rfc-editor.org/rfc/rfc${rfc}.html` };
+}
+async function rfcEditor(query, options) {
+  const rfc = /\brfc\s*(\d+)\b/i.exec(query)?.[1]; if (!rfc) return null;
+  return rfcEditorResult(await json(options.fetchImpl, `https://www.rfc-editor.org/rfc/rfc${rfc}.json`, { ...options, headers: { 'User-Agent': 'cue-meeting-assistant' } }), rfc);
+}
+function blsSeries(query) {
+  if (/\bcpi\b|inflation/i.test(query)) return 'CUUR0000SA0';
+  if (/unemployment/i.test(query)) return 'LNS14000000';
+  if (/wage|salary|earnings/i.test(query)) return 'CES0500000003';
+  return /\b([A-Z]{2,4}\d{5,})\b/.exec(query)?.[1] || null;
+}
+function blsResult(body, series) {
+  const row = body?.Results?.series?.[0]?.data?.[0]; if (!row?.value) return null;
+  return { summary: `${series}: ${row.value}${row.periodName ? ` (${row.periodName} ${row.year})` : ''}.`, source: 'US Bureau of Labor Statistics', url: 'https://data.bls.gov/timeseries/' + series };
+}
+async function bls(query, options) {
+  const series = blsSeries(query); if (!series) return null;
+  return blsResult(await json(options.fetchImpl, BLS_API, { ...options, method: 'POST', headers: { 'Content-Type': 'application/json', 'User-Agent': 'cue-meeting-assistant' }, body: JSON.stringify({ seriesid: [series] }) }), series);
+}
+function owidChart(query) {
+  if (/emissions|co2/i.test(query)) return 'co2-emissions-per-capita'; if (/life expectancy/i.test(query)) return 'life-expectancy';
+  if (/population/i.test(query)) return 'population'; if (/electricity|energy/i.test(query)) return 'electricity-prod-source-stacked';
+  if (/education|school|literacy/i.test(query)) return 'mean-years-of-schooling-long-run'; if (/health|mortality/i.test(query)) return 'child-mortality';
+  return null;
+}
+function owidResult(csv, chart) {
+  const [header, ...rows] = String(csv || '').trim().split(/\r?\n/); if (!header || !rows.length) return null;
+  const columns = header.split(','), valueIndex = columns.length - 1;
+  const row = rows.find((line) => /^World,/.test(line)) || rows[rows.length - 1];
+  const values = row.split(','); if (values.length <= valueIndex || !values[valueIndex]) return null;
+  return { summary: `${values[0]} ${columns[valueIndex]}: ${values[valueIndex]} (${values[1]}).`, source: 'Our World in Data', url: `${OWID_GRAPHER}${chart}` };
+}
+async function owid(query, options) {
+  const chart = owidChart(query); if (!chart) return null;
+  const controller = new AbortController(), timer = setTimeout(() => controller.abort(), options.timeoutMs);
+  try { const response = await options.fetchImpl(`${OWID_GRAPHER}${chart}.csv`, { signal: controller.signal, headers: { 'User-Agent': 'cue-meeting-assistant' } }); return response.ok ? owidResult(await response.text(), chart) : null; } catch (_) { return null; } finally { clearTimeout(timer); }
 }
 
 function waybackResult(body) {
@@ -398,7 +546,7 @@ async function duckDuckGo(query, options) {
 }
 
 function liveSearchSources(apiKeys = {}, searxngUrl = '') {
-  return ['Wikipedia', 'Wikidata', 'SEC EDGAR', 'Federal Register', 'OpenAlex', 'Crossref', 'arXiv', 'PubMed', 'World Bank', 'GDELT', 'Open-Meteo', 'REST Countries', 'OpenStreetMap Nominatim', 'CoinGecko', 'Frankfurter', 'USGS Earthquake', 'Open Library', 'Wayback Machine', 'Hacker News', ...(searxngUrl ? ['SearXNG'] : []), ...(apiKeys.fmp ? ['FMP'] : []), ...(apiKeys.finnhub ? ['Finnhub'] : []), ...(apiKeys.brave ? ['Brave'] : []), ...(apiKeys.tavily ? ['Tavily'] : []), 'DuckDuckGo Instant Answer'];
+  return ['Wikipedia', 'Wikidata', 'SEC EDGAR', 'Federal Register', 'OpenAlex', 'Crossref', 'arXiv', 'PubMed', 'World Bank', 'GDELT', 'Open-Meteo', 'REST Countries', 'OpenStreetMap Nominatim', 'CoinGecko', 'Frankfurter', 'GitHub', 'npm', 'PyPI', 'endoflife.date', 'OSV.dev', 'Stack Exchange', 'AWS Pricing', 'IETF Datatracker', 'RFC Editor', 'US Bureau of Labor Statistics', 'Our World in Data', 'Wayback Machine', 'Hacker News', ...(searxngUrl ? ['SearXNG'] : []), ...(apiKeys.github ? ['GitHub token'] : []), ...(apiKeys.fmp ? ['FMP'] : []), ...(apiKeys.finnhub ? ['Finnhub'] : []), ...(apiKeys.brave ? ['Brave'] : []), ...(apiKeys.tavily ? ['Tavily'] : []), 'DuckDuckGo Instant Answer'];
 }
 async function searchFacts(query, { fetchImpl = fetch, timeoutMs = 5000, apiKeys = {}, searxngUrl = '' } = {}) {
   const text = String(query || '').trim(); if (!text) return null;
@@ -407,8 +555,10 @@ async function searchFacts(query, { fetchImpl = fetch, timeoutMs = 5000, apiKeys
   const financial = [apiKeys.fmp && fmpMetric, apiKeys.finnhub && finnhubMetric].filter(Boolean);
   const sources = type === 'filing' ? [edgar, wikipedia] : type === 'regulation' ? [federalRegister, wikipedia]
     : type === 'news' ? [gdelt, wikipedia] : type === 'weather' ? [openMeteo] : type === 'place' ? [nominatim]
-    : type === 'crypto' ? [coinGecko] : type === 'exchange' ? [frankfurter] : type === 'earthquake' ? [usgs]
-    : type === 'book' ? [openLibrary] : type === 'wayback' ? [wayback] : type === 'tech' ? [hackerNews, wikipedia]
+    : type === 'crypto' ? [coinGecko] : type === 'exchange' ? [frankfurter] : type === 'wayback' ? [wayback] : type === 'tech' ? [hackerNews, wikipedia]
+    : type === 'package' ? [/\b(pypi|pip|python)\b/i.test(text) ? pypi : npm, github] : type === 'repo' ? [github, hackerNews]
+    : type === 'eol' ? [endOfLife] : type === 'vulnerability' ? [osv] : type === 'technical' ? [stackExchange, wikipedia]
+    : type === 'aws' ? [awsPricing] : type === 'standard' ? [ietf, rfcEditor] : type === 'bls' ? [bls, worldBank] : type === 'owid' ? [owid, worldBank]
     : type === 'event' && apiKeys.fmp ? [fmpCalendar, wikipedia] : type === 'metric' ? (financial.length ? [...financial, wikipedia] : general) : general;
   const routed = type === 'research' ? [openAlex, crossref, arxiv] : type === 'medical' ? [pubmed, wikipedia]
     : type === 'countryFact' ? [restCountries, worldBank] : type === 'country' ? [worldBank, wikipedia] : type === 'fact' ? [wikidata, wikipedia] : sources;
@@ -416,4 +566,4 @@ async function searchFacts(query, { fetchImpl = fetch, timeoutMs = 5000, apiKeys
   return null;
 }
 
-module.exports = { searchFacts, liveSearchSources, getConfiguredSources: liveSearchSources, _internals: { classify, federalResult, tickerFrom, wikidataResult, openAlexResult, crossrefResult, arxivResult, pubmedResult, worldBankResult, gdeltResult, openMeteoResult, restCountriesResult, nominatimResult, nominatimDistanceResult, coinGeckoResult, frankfurterResult, usgsResult, openLibraryResult, waybackResult, hackerNewsResult, duckDuckGoResult, searxngResult, resetTickerCache: () => { tickerCache = null; } } };
+module.exports = { searchFacts, liveSearchSources, getConfiguredSources: liveSearchSources, _internals: { classify, federalResult, tickerFrom, wikidataResult, openAlexResult, crossrefResult, arxivResult, pubmedResult, worldBankResult, gdeltResult, openMeteoResult, restCountriesResult, nominatimResult, nominatimDistanceResult, coinGeckoResult, frankfurterResult, githubResult, npmResult, pypiResult, eolResult, osvResult, stackExchangeResult, awsResult, ietfResult, rfcEditorResult, blsResult, owidResult, waybackResult, hackerNewsResult, duckDuckGoResult, searxngResult, resetTickerCache: () => { tickerCache = null; } } };

@@ -81,6 +81,7 @@ test('search is off by default and Claude CLI models are present', () => {
     const settings = store.getSettings();
     // Off by default: an ask-gated search holds the busy lock behind a click.
   assert.equal(settings.searchMode, 'off');
+    assert.equal(settings.apiKeys.github, '');
     assert.deepEqual(settings.models.claudecli, { fast: 'haiku', smart: 'sonnet' });
   } finally {
     fs.rmSync(directory, { recursive: true, force: true });

@@ -199,7 +199,7 @@ test('accumulates split search_facts tool calls and streams the continued answer
   assert.deepEqual(queries, ['moon landing']);
   assert.equal(capturedCompletionRequests.length, 2);
   assert.deepEqual(capturedCompletionRequests[0].tools[0].function.name, 'search_facts');
-  assert.match(capturedCompletionRequests[0].tools[0].function.description, /Wikipedia, Wikidata, SEC EDGAR, Federal Register, OpenAlex, Crossref, arXiv, PubMed, World Bank, GDELT, Open-Meteo, REST Countries, OpenStreetMap Nominatim, CoinGecko, Frankfurter, USGS Earthquake, Open Library, Wayback Machine, and Hacker News/);
+  assert.match(capturedCompletionRequests[0].tools[0].function.description, /GitHub, npm, PyPI, endoflife\.date, OSV\.dev, Stack Exchange, AWS Pricing, IETF Datatracker, RFC Editor, US Bureau of Labor Statistics, Our World in Data/);
   assert.equal(capturedCompletionRequests[1].tools, undefined);
   assert.equal(capturedCompletionRequests[1].messages.at(-2).role, 'assistant');
   assert.equal(capturedCompletionRequests[1].messages.at(-1).role, 'tool');

@@ -136,25 +136,23 @@ test('new key-free parsers shape fixtures and reject malformed data', () => {
   }
 });
 
-test('ten new key-free parsers shape fixtures and reject malformed data', () => {
+test('meeting-claim parsers shape fixtures and reject malformed data', () => {
   const parsers = [
-    [_internals.gdeltResult, { title: 'News item', url: 'https://news.test/item', seendate: '20260822' }, 'GDELT'],
-    [_internals.openMeteoResult, { current: { temperature_2m: 20, precipitation: 0, wind_speed_10m: 4 }, latitude: 43, longitude: -79 }, 'Open-Meteo'],
-    [_internals.restCountriesResult, { name: { common: 'Canada' }, capital: ['Ottawa'], population: 1 }, 'REST Countries'],
-    [_internals.nominatimResult, { display_name: 'Toronto, Canada', lat: '43.7', lon: '-79.4' }, 'OpenStreetMap Nominatim'],
-    [_internals.coinGeckoResult, { bitcoin: { usd: 100, usd_market_cap: 1000 } }, 'CoinGecko', 'bitcoin'],
-    [_internals.frankfurterResult, { rates: { CAD: 1.5 }, date: '2026-08-22' }, 'Frankfurter', 'USD', 'CAD'],
-    [_internals.usgsResult, { properties: { title: 'M 4.0 - Test', url: 'https://usgs.test/event' } }, 'USGS Earthquake'],
-    [_internals.openLibraryResult, { title: 'A Book', author_name: ['An Author'], key: '/works/OL1W' }, 'Open Library'],
-    [_internals.waybackResult, { archived_snapshots: { closest: { available: true, url: 'https://web.archive.org/test' } } }, 'Wayback Machine'],
-    [_internals.hackerNewsResult, { title: 'A launch', url: 'https://news.ycombinator.com/item?id=1' }, 'Hacker News'],
+    [_internals.githubResult, { full_name: 'owner/repo', stargazers_count: 2, html_url: 'https://github.test/owner/repo' }, 'GitHub'],
+    [_internals.npmResult, { 'dist-tags': { latest: '1.0.0' }, versions: { '1.0.0': {} }, time: { '1.0.0': '2026-08-22' } }, 'npm', 'react'],
+    [_internals.pypiResult, { info: { name: 'requests', version: '1.0', package_url: 'https://pypi.test/requests' }, releases: { '1.0': [{ upload_time_iso_8601: '2026-08-22T00:00:00Z' }] } }, 'PyPI', 'requests'],
+    [_internals.eolResult, [{ cycle: '18', eol: '2026-04-30' }], 'endoflife.date', 'nodejs', 'node 18'],
+    [_internals.osvResult, { vulns: [{ id: 'GHSA-test' }] }, 'OSV.dev', 'react', '1.0.0'],
+    [_internals.stackExchangeResult, { title: 'How?', link: 'https://stackoverflow.test/q' }, 'Stack Exchange'],
+    [_internals.awsResult, { products: { x: { sku: 'x', attributes: { servicecode: 'AmazonEC2', productFamily: 'Compute' } } }, terms: { OnDemand: { x: { sku: 'x', priceDimensions: { x: { pricePerUnit: { USD: '0.1' }, unit: 'Hrs' } } } } } }, 'AWS Pricing', 'AmazonEC2'],
+    [_internals.ietfResult, { name: 'rfc9110', title: 'HTTP Semantics' }, 'IETF Datatracker', '9110'],
+    [_internals.blsResult, { Results: { series: [{ data: [{ value: '3.2', periodName: 'July', year: '2026' }] }] } }, 'US Bureau of Labor Statistics', 'LNS14000000'],
+    [_internals.owidResult, 'Entity,Year,Value\nWorld,2025,8.2', 'Our World in Data', 'co2-emissions-per-capita'],
   ];
   for (const [parser, fixture, source, ...args] of parsers) {
     assert.equal(parser(fixture, ...args).source, source);
     assert.equal(parser({}, ...args), null);
   }
-  assert.equal(_internals.nominatimDistanceResult({ display_name: 'A', lat: '0', lon: '0' }, { display_name: 'B', lat: '0', lon: '1' }).source, 'OpenStreetMap Nominatim');
-  assert.equal(_internals.nominatimDistanceResult({}, {}), null);
 });
 
 test('new key-free routes select their specialist source first', async () => {
@@ -165,8 +163,6 @@ test('new key-free routes select their specialist source first', async () => {
     ['where is Toronto?', 'nominatim.openstreetmap.org', 'OpenStreetMap Nominatim', () => [{ display_name: 'Toronto, Canada', lat: '43.7', lon: '-79.4' }]],
     ['bitcoin market cap', 'api.coingecko.com', 'CoinGecko', () => ({ bitcoin: { usd: 100, usd_market_cap: 1000 } })],
     ['USD to CAD exchange rate', 'api.frankfurter.app', 'Frankfurter', () => ({ rates: { CAD: 1.5 }, date: '2026-08-22' })],
-    ['recent earthquake magnitude 4', 'earthquake.usgs.gov', 'USGS Earthquake', () => ({ features: [{ properties: { title: 'M 4.0 - Test', url: 'https://usgs.test/event' } }] })],
-    ['book ISBN for Dune', 'openlibrary.org', 'Open Library', () => ({ docs: [{ title: 'Dune', key: '/works/OL1W' }] })],
     ['their site used to say this: https://example.test on 2020-01-01', 'archive.org', 'Wayback Machine', () => ({ archived_snapshots: { closest: { available: true, url: 'https://web.archive.org/test' } } })],
     ['tech industry product launch', 'hn.algolia.com', 'Hacker News', () => ({ hits: [{ title: 'Launch', url: 'https://news.ycombinator.com/item?id=1' }] })],
   ];
@@ -180,6 +176,41 @@ test('new key-free routes select their specialist source first', async () => {
     assert.match(calls[0].url, new RegExp(host.replace(/\./g, '\\.')));
     if (source === 'OpenStreetMap Nominatim') assert.match(calls[0].options.headers['User-Agent'], /cue-meeting-assistant/);
   }
+});
+
+test('new meeting-claim routes select their specialist source first', async () => {
+  const cases = [
+    ['npm package react', 'registry.npmjs.org', 'npm', () => ({ 'dist-tags': { latest: '1.0.0' }, versions: { '1.0.0': {} }, time: {} })],
+    ['PyPI package requests', 'pypi.org', 'PyPI', () => ({ info: { name: 'requests', version: '1.0' }, releases: { '1.0': [{}] } })],
+    ['is node 18 end of life', 'endoflife.date', 'endoflife.date', () => [{ cycle: '18', eol: '2026-04-30' }]],
+    ['is npm package react 1.0.0 insecure CVE', 'api.osv.dev', 'OSV.dev', () => ({ vulns: [] })],
+    ['Stack Overflow technical consensus how does promises work', 'api.stackexchange.com', 'Stack Exchange', () => ({ items: [{ title: 'Promises', link: 'https://stackoverflow.test/q' }] })],
+    ['AWS EC2 pricing cost', 'pricing.us-east-1.amazonaws.com', 'AWS Pricing', (url) => String(url).endsWith('index.json') ? { offers: { AmazonEC2: { currentRegionIndexUrl: '/offer.json' } } } : { products: { x: { sku: 'x', attributes: { servicecode: 'AmazonEC2', productFamily: 'Compute' } } }, terms: { OnDemand: { x: { sku: 'x', priceDimensions: { x: { pricePerUnit: { USD: '0.1' }, unit: 'Hrs' } } } } } }],
+    ['RFC 9110 spec', 'datatracker.ietf.org', 'IETF Datatracker', () => ({ objects: [{ name: 'rfc9110', title: 'HTTP Semantics' }] })],
+    ['US unemployment employment rate', 'api.bls.gov', 'US Bureau of Labor Statistics', () => ({ Results: { series: [{ data: [{ value: '3.2', periodName: 'July', year: '2026' }] }] } })],
+    ['global CO2 emissions statistic', 'ourworldindata.org', 'Our World in Data', () => 'Entity,Year,Value\nWorld,2025,8.2'],
+    ['is owner/repo abandoned', 'api.github.com', 'GitHub', () => ({ full_name: 'owner/repo', html_url: 'https://github.test/owner/repo', archived: true })],
+  ];
+  for (const [query, host, source, body] of cases) {
+    const calls = [];
+    const result = await searchFacts(query, { fetchImpl: async (url) => {
+      calls.push(String(url)); const value = body(url);
+      return { ok: true, json: async () => value, text: async () => typeof value === 'string' ? value : JSON.stringify(value) };
+    } });
+    assert.equal(result.source, source);
+    assert.match(calls[0], new RegExp(host.replace(/\./g, '\\.')));
+  }
+});
+
+test('GitHub uses its optional token without exposing it in the result', async () => {
+  let headers;
+  const result = await searchFacts('owner/repo repository', { apiKeys: { github: 'test-token' }, fetchImpl: async (_url, init) => {
+    headers = init.headers;
+    return { ok: true, json: async () => ({ full_name: 'owner/repo', html_url: 'https://github.test/owner/repo' }) };
+  } });
+  assert.equal(result.source, 'GitHub');
+  assert.equal(headers.Authorization, 'Bearer test-token');
+  assert.doesNotMatch(result.summary, /test-token/);
 });
 
 test('key-free routing selects the first specialist source for each claim type', async () => {

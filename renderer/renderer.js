@@ -1497,6 +1497,7 @@
     $('#key-minimax').value = settings.apiKeys.minimax || '';
     document.querySelectorAll('#minimax-region-seg button').forEach((b) => b.classList.toggle('on', b.dataset.region === (settings.minimaxRegion || 'global_en')));
     $('#key-azure').value = settings.apiKeys.azure || '';
+    $('#key-github').value = settings.apiKeys.github || '';
     $('#key-fmp').value = settings.apiKeys.fmp || '';
     $('#key-finnhub').value = settings.apiKeys.finnhub || '';
     $('#key-brave').value = settings.apiKeys.brave || '';
@@ -1987,6 +1988,7 @@
     settings.apiKeys.groq = $('#key-groq').value.trim();
     settings.apiKeys.minimax = $('#key-minimax').value.trim();
     settings.apiKeys.azure = $('#key-azure').value.trim();
+    settings.apiKeys.github = $('#key-github').value.trim();
     settings.apiKeys.fmp = $('#key-fmp').value.trim();
     settings.apiKeys.finnhub = $('#key-finnhub').value.trim();
     settings.apiKeys.brave = $('#key-brave').value.trim();
