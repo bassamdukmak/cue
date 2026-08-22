@@ -73,3 +73,15 @@ test('legacy aggression migrates into attack intensity without retaining the old
     fs.rmSync(directory, { recursive: true, force: true });
   }
 });
+
+test('new settings default to Ask first search and include Claude CLI models', () => {
+  const directory = fs.mkdtempSync(path.join(os.tmpdir(), 'cue-store-'));
+  try {
+    const store = loadStore(directory);
+    const settings = store.getSettings();
+    assert.equal(settings.searchMode, 'ask');
+    assert.deepEqual(settings.models.claudecli, { fast: 'haiku', smart: 'sonnet' });
+  } finally {
+    fs.rmSync(directory, { recursive: true, force: true });
+  }
+});

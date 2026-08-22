@@ -6,9 +6,10 @@ const { formatTranscript, buildSystem, applyRules } = require('./prompts');
 const { buildDocumentsBlock } = require('./attack-context');
 
 const NORMAL_RULES =
-  'You have no internet access, so never invent facts, figures, dates, names or sources. '
-  + 'Use only the conversation, screen, loaded documents and the user\'s message as evidence.\n'
+  'A factual-search tool exists, but it is slow: use it only when a specific factual claim is worth verifying. '
+  + 'Never invent facts, figures, dates, names or sources. Use only the conversation, screen, loaded documents, user message, and any search result as evidence.\n'
   + '- Answer directly and plainly. If the available context is not enough, say what is missing.\n'
+  + '- A verified search result may be stated flatly and tagged "conf: sourced".\n'
   + '- Do not add interview framing, challenge claims, or take a negotiation stance.\n'
   + '- Keep it useful in a live meeting: draft words to say when that helps; otherwise explain or summarise.';
 

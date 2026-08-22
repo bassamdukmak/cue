@@ -191,7 +191,10 @@
           <button data-provider="groq">Groq</button>
           <button data-provider="minimax">MiniMax</button>
           <button data-provider="azure">Azure AI</button>
+          <button data-provider="claudecli">Claude CLI</button>
         </div>
+
+        <div id="claudecli-provider-hint" class="s-note hidden">Uses your local Claude Code subscription — no API key. It is text-only and usually has higher latency.</div>
 
         <label class="s-label">API keys &amp; URLs <span class="s-hint">stored locally · never sent to any server</span></label>
         <div class="s-field"><span>OpenAI</span><input id="key-openai" type="password" placeholder="sk-..." autocomplete="off" /></div>
@@ -328,6 +331,13 @@
           <button data-persona="attack">Fact-check</button>
         </div>
         <div class="s-note">Interview keeps every original prompt. Fact-check repoints the same buttons at challenging claims other people make.</div>
+
+        <label class="s-label" style="margin-top:14px;">Fact search <span class="s-hint">Wikipedia; offered only in Normal and Fact-check modes</span></label>
+        <div class="s-seg" id="search-mode-seg">
+          <button data-search-mode="off">Off</button>
+          <button data-search-mode="ask">Ask first</button>
+          <button data-search-mode="auto">Auto</button>
+        </div>
 
         <label class="s-label" style="margin-top:14px;">People <span class="s-hint">one per line: Name | ally, neutral or target | notes</span></label>
         <textarea id="roster" rows="6" spellcheck="false" placeholder="Dave | target | overstates latency numbers, cites blog posts as research&#10;Priya | ally | knows the billing system properly&#10;Sam | neutral |"></textarea>

@@ -1,11 +1,15 @@
 const assert = require('node:assert/strict');
 const test = require('node:test');
 const Module = require('node:module');
+const { EventEmitter } = require('node:events');
 const { OPTIONAL_API_KEY_PLACEHOLDER } = require('../src/openai-compatible');
 
 let capturedClientOptions = null;
 let capturedCompletionRequest = null;
+let capturedCompletionRequests = [];
 let mockStreamParts = [{ choices: [{ delta: { content: 'ok' } }] }];
+let mockStreams = null;
+let mockSpawn = null;
 const originalModuleLoad = Module._load;
 
 Module._load = function loadWithOpenAIStub(request, parent, isMain) {
@@ -17,13 +21,15 @@ Module._load = function loadWithOpenAIStub(request, parent, isMain) {
           completions: {
             create: async (completionRequest) => {
               capturedCompletionRequest = completionRequest;
-              return mockStreamParts;
+              capturedCompletionRequests.push(completionRequest);
+              return mockStreams ? mockStreams.shift() : mockStreamParts;
             }
           }
         };
       }
     };
   }
+  if (request === 'child_process' && mockSpawn) return { spawn: mockSpawn };
   return originalModuleLoad.call(this, request, parent, isMain);
 };
 
@@ -47,7 +53,10 @@ function createCustomSettings(overrides = {}) {
 test.beforeEach(() => {
   capturedClientOptions = null;
   capturedCompletionRequest = null;
+  capturedCompletionRequests = [];
   mockStreamParts = [{ choices: [{ delta: { content: 'ok' } }] }];
+  mockStreams = null;
+  mockSpawn = null;
 });
 
 test('routes the Custom provider through the configured OpenAI-compatible endpoint', async () => {
@@ -151,6 +160,55 @@ test('DeepSeek LeetCode fast calls use temperature zero', async () => {
   await llm.stream({ system: 's', turns: [{ role: 'user', text: 'hi' }], mode: 'leetcode', onToken: () => {} });
 
   assert.equal(capturedCompletionRequest.temperature, 0);
+});
+
+test('accumulates split search_facts tool calls and streams the continued answer', async () => {
+  mockStreams = [
+    [
+      { choices: [{ delta: { tool_calls: [{ index: 0, id: 'call-1', type: 'function', function: { name: 'search_', arguments: '{"query":"' } }] } }] },
+      { choices: [{ delta: { tool_calls: [{ index: 0, function: { name: 'facts', arguments: 'moon landing"}' } }] } }] },
+    ],
+    [{ choices: [{ delta: { content: 'SAY: sourced answer\nconf: sourced' } }] }],
+  ];
+  const queries = [];
+  const tokens = [];
+  const llm = createLLM(createCustomSettings());
+  const reply = await llm.stream({
+    system: 's', turns: [{ role: 'user', text: 'verify it' }], onToken: (token) => tokens.push(token),
+    onToolCall: async (query) => { queries.push(query); return { summary: 'Apollo 11 landed in 1969.', source: 'Wikipedia', url: 'https://example.test' }; }
+  });
+
+  assert.deepEqual(queries, ['moon landing']);
+  assert.equal(capturedCompletionRequests.length, 2);
+  assert.deepEqual(capturedCompletionRequests[0].tools[0].function.name, 'search_facts');
+  assert.equal(capturedCompletionRequests[1].tools, undefined);
+  assert.equal(capturedCompletionRequests[1].messages.at(-2).role, 'assistant');
+  assert.equal(capturedCompletionRequests[1].messages.at(-1).role, 'tool');
+  assert.match(capturedCompletionRequests[1].messages.at(-1).content, /Apollo 11/);
+  assert.equal(reply, 'SAY: sourced answer\nconf: sourced');
+  assert.deepEqual(tokens, ['SAY: sourced answer\nconf: sourced']);
+});
+
+test('Claude CLI remains ready without a key and reports a clear missing-binary error', async () => {
+  mockSpawn = () => {
+    const child = new EventEmitter();
+    child.stdin = { end() {} };
+    child.stdout = new EventEmitter();
+    child.stderr = new EventEmitter();
+    child.kill = () => {};
+    process.nextTick(() => {
+      const error = new Error('spawn claude ENOENT');
+      error.code = 'ENOENT';
+      child.emit('error', error);
+    });
+    return child;
+  };
+  const llm = createLLM({ provider: 'claudecli', smart: false, apiKeys: {}, models: { claudecli: { fast: 'haiku', smart: 'sonnet' } } });
+  assert.equal(llm.ready, true);
+  await assert.rejects(
+    llm.stream({ system: 's', turns: [{ role: 'user', text: 'hello' }], onToken: () => {} }),
+    /Claude CLI is not installed or is not on PATH/
+  );
 });
 
 // ---- MiniMax (PR #22) -----------------------------------------------------

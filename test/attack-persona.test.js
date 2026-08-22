@@ -41,10 +41,10 @@ test('an unknown persona falls back to interview instead of breaking', () => {
   assert.equal(resolveMode('nonsense', 'say'), MODES.say);
 });
 
-test('every attack prompt carries the no-search safety rules', () => {
+test('every attack prompt carries the search safety rules', () => {
   for (const [name, def] of Object.entries(ATTACK_MODES)) {
     const system = def.buildSystem(null, '');
-    assert.match(system, /no internet access/i, `${name} is missing the no-search warning`);
+    assert.match(system, /factual-search tool exists.*slow/i, `${name} is missing the search warning`);
     assert.match(system, /conf: high/, `${name} does not require a confidence tag`);
     assert.match(system, /prefer a question|questions rather than claims|question that exposes/i,
       `${name} does not prefer questions over assertions`);
@@ -182,6 +182,7 @@ test('text-only models are never sent an image part', () => {
   // DeepSeek rejects image_url outright, which would fail the whole request
   // rather than degrade, so the screenshot has to be dropped before sending.
   assert.equal(modelSupportsVision('deepseek-v4-flash'), false);
+  assert.equal(modelSupportsVision('haiku', 'claudecli'), false);
 });
 
 test('vision-capable models still receive images', () => {

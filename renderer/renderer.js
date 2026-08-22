@@ -1226,6 +1226,28 @@
     if (!aiEl) startAi(true);
     aiEl.dataset.raw = message; finalizeAi(); setBusy(false);
   });
+  cue.on('search:request', ({ id, query }) => {
+    const chip = document.createElement('div');
+    chip.className = 'search-chip';
+    const label = document.createElement('span');
+    label.textContent = `Search Wikipedia: ${query}`;
+    const allow = document.createElement('button');
+    allow.textContent = 'Allow';
+    const deny = document.createElement('button');
+    deny.textContent = 'Deny';
+    const answer = (allowed) => {
+      allow.disabled = true;
+      deny.disabled = true;
+      label.textContent = allowed ? `Searching: ${query}` : 'Search denied — answering from memory.';
+      cue.searchRespond(id, allowed);
+    };
+    allow.addEventListener('click', () => answer(true));
+    deny.addEventListener('click', () => answer(false));
+    chip.append(label, allow, deny);
+    (aiEl?.parentElement || messages).appendChild(chip);
+    setIgnore(false);
+    setTimeout(() => { if (!allow.disabled) answer(false); }, 60000);
+  });
   cue.on('transcript', ({ channel, text }) => {
     if (!text || text.trim().length < 2 || /^[?!.,;:\-…]+$/.test(text.trim())) return;
     appendTranscriptHistoryTurn(channel, text, false);
@@ -1240,8 +1262,9 @@
   });
   let statusTimer = null;
   let transientStatus = '';
+  let transientMuted = false;
   const persistentStatuses = {};
-  function showStatus(message, persistent = false, key = 'general') {
+  function showStatus(message, persistent = false, key = 'general', muted = false) {
     let el = document.getElementById('cue-status');
     if (!el) {
       el = document.createElement('div');
@@ -1262,9 +1285,11 @@
       else delete persistentStatuses[key];
     } else {
       transientStatus = message;
+      transientMuted = !!muted;
       clearTimeout(statusTimer);
       statusTimer = setTimeout(() => {
         transientStatus = '';
+        transientMuted = false;
         renderStatus();
       }, 11000);
     }
@@ -1277,10 +1302,11 @@
     el.textContent = messages.join(' · ');
     el.classList.toggle('show', messages.length > 0);
     el.classList.toggle('persistent', Object.keys(persistentStatuses).length > 0);
+    el.classList.toggle('muted', !!transientStatus && transientMuted && Object.keys(persistentStatuses).length === 0);
   }
-  cue.on('status', ({ message, persistent, key }) => {
+  cue.on('status', ({ message, persistent, key, muted }) => {
     cue.log('[status] ' + message);
-    showStatus(message, persistent, key);
+    showStatus(message, persistent, key, muted);
     if (sttState !== 'disconnected') {
       const lower = message.toLowerCase();
       if (lower.includes('error') || lower.includes(' off')) {
@@ -1432,6 +1458,7 @@
 
   function updateCustomProviderFields() {
     $('#custom-endpoint-settings').classList.toggle('hidden', settings.provider !== 'custom');
+    $('#claudecli-provider-hint').classList.toggle('hidden', settings.provider !== 'claudecli');
   }
 
   function fillSettings() {
@@ -1480,6 +1507,7 @@
     meetingGoal.value = settings.meetingGoal || '';
     updateGoalControl();
     document.querySelectorAll('#persona-seg button').forEach((b) => b.classList.toggle('on', b.dataset.persona === (settings.persona || 'interview')));
+    document.querySelectorAll('#search-mode-seg button').forEach((b) => b.classList.toggle('on', b.dataset.searchMode === (settings.searchMode || 'ask')));
     updateAiRulesCounter();
     // Q&A tab
     $('#salary-target').value = settings.salaryTarget || '';
@@ -1577,7 +1605,7 @@
 
   function statusText() {
     const k = settings.apiKeys;
-    const labels = { openai: 'OpenAI', anthropic: 'Anthropic', gemini: 'Gemini', deepgram: 'Deepgram', custom: 'Custom', ollama: 'Ollama', groq: 'Groq', minimax: 'MiniMax', azure: 'Azure AI Foundry' };
+    const labels = { openai: 'OpenAI', anthropic: 'Anthropic', gemini: 'Gemini', deepgram: 'Deepgram', custom: 'Custom', ollama: 'Ollama', groq: 'Groq', minimax: 'MiniMax', azure: 'Azure AI Foundry', claudecli: 'Claude CLI' };
     const has = Object.keys(labels).filter((p) => k[p]).map((p) => labels[p]);
     // 'auto' walks the same fallback chain src/stt.js builds; an explicit choice
     // is reported as-is so the status line matches what will actually be used.
@@ -1605,6 +1633,10 @@
   document.querySelectorAll('#minimax-region-seg button').forEach((b) => b.addEventListener('click', () => {
     settings.minimaxRegion = b.dataset.region;
     document.querySelectorAll('#minimax-region-seg button').forEach((x) => x.classList.toggle('on', x === b));
+  }));
+  document.querySelectorAll('#search-mode-seg button').forEach((b) => b.addEventListener('click', () => {
+    settings.searchMode = b.dataset.searchMode;
+    document.querySelectorAll('#search-mode-seg button').forEach((x) => x.classList.toggle('on', x === b));
   }));
   // These mirror the overlay's mode menu, so they route through setPersona and
   // save immediately rather than waiting for the Settings Save button.
@@ -1984,7 +2016,7 @@
   function setIgnore(v) { if (v !== ignoring) { ignoring = v; cue.setIgnoreMouse(v); } }
   document.addEventListener('mousemove', (e) => {
     const el = document.elementFromPoint(e.clientX, e.clientY);
-    const overUI = !!(el && el.closest && el.closest('#toolbar, #panel-wrap, #mode-menu, #goal-popover, #intensity-popover, #insights-panel, #transcript-sidebar, #settings-scrim, #onboard-scrim, #consent-scrim'));
+    const overUI = !!(el && el.closest && el.closest('#toolbar, #panel-wrap, .search-chip, #mode-menu, #goal-popover, #intensity-popover, #insights-panel, #transcript-sidebar, #settings-scrim, #onboard-scrim, #consent-scrim'));
     setIgnore(!overUI);
   });
   setIgnore(true); // start fully click-through; hovering the panel re-enables it

@@ -19,6 +19,7 @@ const DEFAULTS = {
     threads: 0
   },
   smart: false,
+  searchMode: 'ask',
   baseUrl: '',
   minimaxRegion: 'global_en',
   apiKeys: { openai: '', anthropic: '', gemini: '', deepgram: '', custom: '', ollama: '', groq: '', minimax: '' , azure: '' },
@@ -66,7 +67,8 @@ const DEFAULTS = {
     ollama: { fast: 'llama3.2', smart: 'llama3.3' },
     groq: { fast: 'llama-3.1-8b-instant', smart: 'llama-3.3-70b-versatile' },
     minimax: { fast: 'MiniMax-M2.7', smart: 'MiniMax-M3' },
-    azure: { fast: 'gpt-4o-mini', smart: 'gpt-4o' }
+    azure: { fast: 'gpt-4o-mini', smart: 'gpt-4o' },
+    claudecli: { fast: 'haiku', smart: 'sonnet' }
   }
 };
 

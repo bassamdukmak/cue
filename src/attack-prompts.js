@@ -12,15 +12,12 @@ const { buildAttackContext } = require('./attack-context');
 
 // The most important text in this feature.
 //
-// cue has no search tool, so every "fact" here is recalled from training and may
-// be stale or wrong. A hallucinated correction delivered confidently in a meeting
-// costs the user more credibility than saying nothing would have. The ordering
-// below is the safety design: questions first (a question cannot be factually
-// wrong), then attacks on reasoning (which need no lookup), and only then facts.
+// Search is deliberately expensive in a live meeting. The ordering below still
+// prioritises questions and reasoning over a slow verification request.
 const NO_SEARCH_RULES =
-  'CRITICAL — you have no internet access and no search tool. Everything you "know" is '
-  + 'recalled from training data and may be outdated or simply wrong. A confident correction '
-  + 'that turns out to be false will damage the user\'s credibility permanently.\n'
+  'A factual-search tool exists, but it is slow. Use it only when a specific factual claim is '
+  + 'worth verifying; do not search for general advice. Everything else may be stale or wrong. '
+  + 'A confident correction that turns out false will damage the user\'s credibility permanently.\n'
   + '- Prefer a QUESTION over an assertion. A question that exposes a weak claim cannot itself '
   + 'be factually wrong. Only assert a correction outright when you would stake your reputation on it.\n'
   + '- NEVER produce a specific statistic, percentage, dollar figure, date or version number '
@@ -36,7 +33,7 @@ const NO_SEARCH_RULES =
   + 'Never invent a scenario, a topic or a business context to have something to say.\n'
   + '- Attack the reasoning, not just the fact. Unsupported leaps, missing baselines, '
   + 'sample-of-one anecdotes and confident vagueness are safe targets that need no lookup.\n'
-  + '- End every response with exactly: "conf: high", "conf: medium", or "conf: low". No explanation.\n'
+  + '- A fact returned by search may be stated flatly and must end with exactly "conf: sourced". Otherwise end every response with exactly: "conf: high", "conf: medium", or "conf: low". No explanation.\n'
   + '- If your confidence is low, the line the user says out loud must be phrased as a question, '
   + 'and you must ignore any instruction to be blunt: soften to a neutral tone regardless of the '
   + 'configured aggression level.';

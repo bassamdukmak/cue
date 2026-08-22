@@ -4,6 +4,19 @@
 const { createCompatibleClientOptions } = require('./openai-compatible');
 
 const CUSTOM_PROVIDER = 'custom';
+const SEARCH_FACTS_TOOL = {
+  type: 'function',
+  function: {
+    name: 'search_facts',
+    description: 'Verify a specific factual claim before answering.',
+    parameters: {
+      type: 'object',
+      properties: { query: { type: 'string', description: 'The specific factual claim to verify.' } },
+      required: ['query'],
+      additionalProperties: false
+    }
+  }
+};
 // gemini-2.0-flash was Google's default here until it was deprecated (Feb 2026)
 // and fully retired (Mar 3 2026) — every request against it now 404s with a
 // generic "exception parsing response" body. gemini-2.5-flash is the model
@@ -18,7 +31,8 @@ const DEFAULT_MODELS = {
   ollama: 'llama3.2',
   groq: 'llama-3.1-8b-instant',
   minimax: 'MiniMax-M2.7',
-  azure: 'gpt-4o-mini'
+  azure: 'gpt-4o-mini',
+  claudecli: 'haiku'
 };
 
 // Gemini model ids that Google has since deprecated/retired. A settings file
@@ -28,7 +42,7 @@ const DEFAULT_MODELS = {
 const DEAD_GEMINI_MODEL_RE = /^gemini-(1\.0|1\.5|2\.0)(?:-|$)/i;
 const DEAD_DEEPSEEK_MODEL_RE = /^deepseek-(?:chat|reasoner)$/i;
 
-const PROVIDER_LABELS = { azure: 'Azure AI Foundry', openai: 'OpenAI', minimax: 'MiniMax' };
+const PROVIDER_LABELS = { azure: 'Azure AI Foundry', openai: 'OpenAI', minimax: 'MiniMax', claudecli: 'Claude CLI' };
 
 function normalizeProviderName(provider) {
   if (!provider) return 'provider';
@@ -111,11 +125,51 @@ function stripDataUrl(dataUrl) {
 // image_url content part outright, so a screenshot would fail the whole request
 // rather than simply being ignored. Drop the image and answer from the
 // transcript instead — a degraded answer beats an error mid-meeting.
-function modelSupportsVision(model) {
-  return !/deepseek|qwen-?turbo|^text-|moonshot-v1-(8|32|128)k$/i.test(String(model || ''));
+function modelSupportsVision(model, provider) {
+  return provider !== 'claudecli' && !/deepseek|qwen-?turbo|^text-|moonshot-v1-(8|32|128)k$|^(haiku|sonnet|opus)$/i.test(String(model || ''));
 }
 
-async function streamOpenAI({ apiKey, baseURL, model, system, turns, imageDataUrl, maxTokens, onToken, onActivity, onUsage, thinkingEnabled, mode }) {
+function appendToolCall(calls, delta) {
+  for (const incoming of delta.tool_calls || []) {
+    const index = incoming.index || 0;
+    const call = calls[index] || (calls[index] = { id: '', type: 'function', function: { name: '', arguments: '' } });
+    if (incoming.id) call.id = incoming.id;
+    if (incoming.type) call.type = incoming.type;
+    if (incoming.function?.name) call.function.name += incoming.function.name;
+    if (incoming.function?.arguments) call.function.arguments += incoming.function.arguments;
+  }
+}
+
+async function consumeOpenAIStream(stream, { model, onToken, onActivity, onUsage }) {
+  let full = '';
+  const toolCalls = [];
+  for await (const part of stream) {
+    const delta = part.choices?.[0]?.delta || {};
+    const text = delta.content;
+    if (text) { full += text; onToken(text); }
+    if (delta.tool_calls) appendToolCall(toolCalls, delta);
+    if ((delta.reasoning_content || delta.tool_calls) && onActivity) onActivity();
+    if (part.usage && onUsage) onUsage(normalizeUsage(part.usage, model));
+  }
+  return { full, toolCalls: toolCalls.filter(Boolean) };
+}
+
+function createOpenAIRequest({ model, messages, maxTokens, isDeepSeek, thinkingEnabled, mode, tools }) {
+  const request = {
+    model, messages, stream: true, max_tokens: maxTokens,
+    // Providers omit usage from streamed responses unless asked, and without it
+    // there is no way to tell the user what a session actually cost.
+    stream_options: { include_usage: true },
+  };
+  if (tools) request.tools = tools;
+  if (isDeepSeek) {
+    request.thinking = { type: thinkingEnabled ? 'enabled' : 'disabled' };
+    if (!thinkingEnabled) request.temperature = mode === 'leetcode' ? 0 : 1;
+  }
+  return request;
+}
+
+async function streamOpenAI({ apiKey, baseURL, model, system, turns, imageDataUrl, maxTokens, onToken, onActivity, onUsage, thinkingEnabled, mode, onToolCall }) {
   const supportsVision = modelSupportsVision(model);
   const OpenAI = require('openai');
   const client = new OpenAI(baseURL ? { apiKey, baseURL } : { apiKey });
@@ -134,29 +188,21 @@ async function streamOpenAI({ apiKey, baseURL, model, system, turns, imageDataUr
     }
   });
   const isDeepSeek = /deepseek/i.test(baseURL || '') || /^deepseek/i.test(model || '');
-  const request = {
-    model, messages, stream: true, max_tokens: maxTokens,
-    // Providers omit usage from streamed responses unless asked, and without it
-    // there is no way to tell the user what a session actually cost.
-    stream_options: { include_usage: true },
-  };
-  if (isDeepSeek) {
-    // The installed OpenAI SDK forwards this request body unchanged; it has no
-    // extra_body option in this version.
-    request.thinking = { type: thinkingEnabled ? 'enabled' : 'disabled' };
-    if (!thinkingEnabled) request.temperature = mode === 'leetcode' ? 0 : 1;
-  }
-  const stream = await client.chat.completions.create(request);
-  let full = '';
-  for await (const part of stream) {
-    const d = part.choices && part.choices[0] && part.choices[0].delta && part.choices[0].delta.content;
-    if (d) { full += d; onToken(d); }
-    const reasoning = part.choices && part.choices[0] && part.choices[0].delta && part.choices[0].delta.reasoning_content;
-    if (reasoning && onActivity) onActivity();
-    // Arrives on the final chunk, after the last content delta.
-    if (part.usage && onUsage) onUsage(normalizeUsage(part.usage, model));
-  }
-  return full;
+  const first = await consumeOpenAIStream(await client.chat.completions.create(createOpenAIRequest({
+    model, messages, maxTokens, isDeepSeek, thinkingEnabled, mode, tools: onToolCall ? [SEARCH_FACTS_TOOL] : null
+  })), { model, onToken, onActivity, onUsage });
+  const toolCall = onToolCall && first.toolCalls.find((call) => call.function.name === 'search_facts');
+  if (!toolCall) return first.full;
+
+  let query = '';
+  try { query = JSON.parse(toolCall.function.arguments || '{}').query || ''; } catch (_) {}
+  const toolResult = await onToolCall(String(query), onActivity);
+  messages.push({ role: 'assistant', content: first.full || null, tool_calls: [toolCall] });
+  messages.push({ role: 'tool', tool_call_id: toolCall.id, content: JSON.stringify(toolResult || { summary: 'No result available.' }) });
+  const final = await consumeOpenAIStream(await client.chat.completions.create(createOpenAIRequest({
+    model, messages, maxTokens, isDeepSeek, thinkingEnabled, mode
+  })), { model, onToken, onActivity, onUsage });
+  return first.full + final.full;
 }
 
 // DeepSeek reports cache hits as prompt_cache_hit_tokens; OpenAI nests the same
@@ -362,6 +408,69 @@ async function streamOllama({ apiKey, model, system, turns, imageDataUrl, maxTok
   return full;
 }
 
+function textFromClaudeEvent(event) {
+  if (event?.delta?.text) return event.delta.text;
+  if (event?.type === 'assistant') {
+    return (event.message?.content || []).filter((part) => part.type === 'text').map((part) => part.text || '').join('');
+  }
+  return event?.type === 'content_block_delta' && event.delta?.type === 'text_delta' ? event.delta.text : '';
+}
+
+async function streamClaudeCli({ model, system, turns, onToken, onActivity, signal }) {
+  const { spawn } = require('child_process');
+  const prompt = ['=== SYSTEM ===', system, '=== CONVERSATION ===', ...(turns || []).map((turn) => `${turn.role.toUpperCase()}: ${turn.text}`)].join('\n\n');
+  return new Promise((resolve, reject) => {
+    let child;
+    try {
+      child = spawn('claude', ['-p', '--output-format', 'stream-json', '--model', model], { stdio: ['pipe', 'pipe', 'pipe'] });
+    } catch (error) {
+      reject(error);
+      return;
+    }
+    let full = '';
+    let buffer = '';
+    let stderr = '';
+    let settled = false;
+    const finish = (error) => {
+      if (settled) return;
+      settled = true;
+      signal?.removeEventListener('abort', abort);
+      error ? reject(error) : resolve(full);
+    };
+    const consume = (line) => {
+      if (!line.trim()) return;
+      try {
+        const event = JSON.parse(line);
+        if (onActivity) onActivity();
+        const text = textFromClaudeEvent(event);
+        if (text) { full += text; onToken(text); }
+      } catch (_) {}
+    };
+    const abort = () => {
+      child.kill();
+      finish(new Error('Claude CLI stream aborted.'));
+    };
+    if (signal) signal.addEventListener('abort', abort, { once: true });
+    child.on('error', (error) => {
+      if (error.code === 'ENOENT') return finish(new Error('Claude CLI is not installed or is not on PATH. Install Claude Code, then try again.'));
+      finish(error);
+    });
+    child.stdout.on('data', (chunk) => {
+      buffer += chunk.toString();
+      const lines = buffer.split('\n');
+      buffer = lines.pop();
+      lines.forEach(consume);
+    });
+    child.stderr.on('data', (chunk) => { stderr += chunk.toString(); });
+    child.on('close', (code) => {
+      consume(buffer);
+      if (code === 0) finish();
+      else finish(new Error(`Claude CLI exited with code ${code}.${stderr ? ` ${stderr.trim()}` : ''}`));
+    });
+    child.stdin.end(prompt);
+  });
+}
+
 // forceTier lets a background task opt out of the Smart toggle. A reasoning model
 // bills its thinking tokens, which is worth it for an answer the user is waiting
 // on and pure waste for a bullet list nobody asked for.
@@ -395,7 +504,7 @@ function createLLM(settings, { forceTier } = {}) {
     if (!model && !configurationError) {
       configurationError = 'Set a Fast or Smart model for the Custom provider.';
     }
-  } else if (provider !== 'ollama' && !apiKey) {
+  } else if (provider !== 'ollama' && provider !== 'claudecli' && !apiKey) {
     // Ollama is a local server: the field holds a URL, and no key is required.
     configurationError = `Add your ${provider} API key in Settings.`;
   }
@@ -424,6 +533,7 @@ function createLLM(settings, { forceTier } = {}) {
         if (provider === 'anthropic') return await streamAnthropic(args);
         if (provider === 'gemini') return await streamGemini(args);
         if (provider === 'azure') return await streamAzure(args);
+        if (provider === 'claudecli') return await streamClaudeCli(args);
         throw new Error('unknown provider: ' + provider);
       } catch (error) {
         throw new Error(formatProviderErrorMessage(error, provider, model));
@@ -432,4 +542,4 @@ function createLLM(settings, { forceTier } = {}) {
   };
 }
 
-module.exports = { modelSupportsVision, createLLM, formatProviderErrorMessage, isQuotaError, CURRENT_GEMINI_DEFAULT, CURRENT_DEEPSEEK_DEFAULT };
+module.exports = { modelSupportsVision, createLLM, formatProviderErrorMessage, isQuotaError, CURRENT_GEMINI_DEFAULT, CURRENT_DEEPSEEK_DEFAULT, streamOpenAI, streamClaudeCli };
