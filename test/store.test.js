@@ -104,3 +104,19 @@ test('the former DeepSeek default pair migrates to Vision Exp without replacing 
     fs.rmSync(directory, { recursive: true, force: true });
   }
 });
+
+test('lifetime usage is saved with its complete persistent shape', () => {
+  const directory = fs.mkdtempSync(path.join(os.tmpdir(), 'cue-store-'));
+  try {
+    const store = loadStore(directory);
+    const usageLifetime = {
+      promptTokens: 1200, cachedTokens: 300, completionTokens: 90, calls: 2, costUsd: 0.0042,
+      byModel: { 'gpt-4o-mini': { promptTokens: 1200, cachedTokens: 300, completionTokens: 90, calls: 2 } },
+      since: '2026-08-22T10:00:00.000Z'
+    };
+    store.setSettings({ usageLifetime });
+    assert.deepEqual(loadStore(directory).getSettings().usageLifetime, usageLifetime);
+  } finally {
+    fs.rmSync(directory, { recursive: true, force: true });
+  }
+});

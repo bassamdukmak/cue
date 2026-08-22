@@ -25,7 +25,8 @@ const DEFAULTS = {
   searchMode: 'off',
   baseUrl: '',
   minimaxRegion: 'global_en',
-  apiKeys: { openai: '', anthropic: '', gemini: '', deepgram: '', custom: '', ollama: '', groq: '', minimax: '' , azure: '' },
+  apiKeys: { openai: '', anthropic: '', gemini: '', deepgram: '', custom: '', ollama: '', groq: '', minimax: '' , azure: '', fmp: '', finnhub: '', brave: '', tavily: '' },
+  usageLifetime: { promptTokens: 0, cachedTokens: 0, completionTokens: 0, calls: 0, costUsd: 0, byModel: {}, since: null },
   azureEndpoint: '',
   // Tab 2: Profile
   resumeText: '',

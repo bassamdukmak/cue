@@ -1045,3 +1045,7 @@ button:focus { outline: none; }
   font-variant-numeric: tabular-nums;
 }
 .usage-bar.hidden { display: none; }
+.lifetime-spend { display: flex; align-items: center; flex-wrap: wrap; gap: 7px; margin-top: 8px; color: var(--tx-mut); font-size: 11px; }
+.lifetime-spend button { border: 0; background: none; color: var(--accent); cursor: pointer; font: inherit; padding: 0; }
+.lifetime-spend .hidden { display: none; }
+.s-field small { display: block; color: var(--tx-mut); font-size: 10px; font-weight: normal; }

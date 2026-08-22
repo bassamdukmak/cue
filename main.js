@@ -4,7 +4,8 @@ const os = require('os');
 const store = require('./src/store');
 const { captureScreenshot } = require('./src/screen');
 const { extractTextFromImage } = require('./src/ocr');
-const { searchFacts } = require('./src/search');
+const { searchFacts, getConfiguredSources } = require('./src/search');
+const { emptyUsage, accumulateUsage, unpricedModels } = require('./src/pricing');
 const { createSTT } = require('./src/stt');
 const { parseDocumentFile } = require('./src/resume');
 const { createLLM, modelSupportsVision } = require('./src/llm');
@@ -142,7 +143,7 @@ async function warmScreenFromTranscript() {
   }
 }
 
-function requestSearchPermission(query, onActivity) {
+function requestSearchPermission(query, onActivity, sources) {
   const id = `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
   return new Promise((resolve) => {
     const heartbeat = setInterval(() => onActivity?.(), 5000);
@@ -155,21 +156,22 @@ function requestSearchPermission(query, onActivity) {
     };
     pendingSearchRequests.set(id, finish);
     timeout = setTimeout(() => finish(false), 60000);
-    send('search:request', { id, query });
+    send('search:request', { id, query, sources });
   });
 }
 
 async function handleSearchToolCall(query, onActivity) {
   const settings = store.getSettings();
   const mode = settings.searchMode || 'ask';
+  const sources = getConfiguredSources(settings.apiKeys).join(' + ');
   if (mode === 'off') return { denied: true, message: 'Web search is disabled. Answer from memory and state uncertainty.' };
-  if (mode === 'ask' && !(await requestSearchPermission(query, onActivity))) {
+  if (mode === 'ask' && !(await requestSearchPermission(query, onActivity, sources))) {
     return { denied: true, message: 'The user denied this web search. Answer from memory and state uncertainty.' };
   }
   if (mode === 'auto') send('status', { message: `searching: ${query}`, muted: true });
-  const result = await searchFacts(query);
+  const result = await searchFacts(query, { apiKeys: settings.apiKeys });
   if (mode === 'auto') send('status', { message: '', muted: true });
-  return result || { summary: 'No Wikipedia result was available for this query.', source: 'Wikipedia', url: null };
+  return result || { summary: 'No configured search source returned a result for this query.', source: 'No source', url: null };
 }
 
 function clearEmptyTranscriptStatus() {
@@ -230,25 +232,34 @@ function scheduleAutoSuggest() {
 // The user is billed per token, so the app has to be able to answer "what has
 // this cost me". Reported straight from the provider's own usage numbers, never
 // estimated from string lengths.
-const usageTotals = { promptTokens: 0, cachedTokens: 0, completionTokens: 0, calls: 0 };
-// Background insight calls are forced to the cheap tier while the user may have
-// Smart on, so a single blended total cannot be priced correctly. Keep the split
-// by model and let the renderer apply each model's own rate.
-const usageByModel = {};
+let usageTotals = emptyUsage();
+let usageLifetime = { ...emptyUsage({ lifetime: true }), ...store.getSettings().usageLifetime, byModel: { ...(store.getSettings().usageLifetime?.byModel || {}) } };
+let usagePersistTimer = null;
+const USAGE_PERSIST_MS = 5000;
+
+function usageUpdate() {
+  send('usage:update', {
+    session: { ...usageTotals, unpricedModels: unpricedModels(usageTotals.byModel) },
+    lifetime: { ...usageLifetime, unpricedModels: unpricedModels(usageLifetime.byModel) }
+  });
+}
+
+function persistUsageLifetime() {
+  if (usagePersistTimer) { clearTimeout(usagePersistTimer); usagePersistTimer = null; }
+  usageLifetime = store.setSettings({ usageLifetime }).usageLifetime;
+}
+
+function scheduleUsagePersistence() {
+  clearTimeout(usagePersistTimer);
+  usagePersistTimer = setTimeout(persistUsageLifetime, USAGE_PERSIST_MS);
+}
 
 function recordUsage(usage) {
   if (!usage) return;
-  usageTotals.promptTokens += usage.promptTokens || 0;
-  usageTotals.cachedTokens += usage.cachedTokens || 0;
-  usageTotals.completionTokens += usage.completionTokens || 0;
-  usageTotals.calls += 1;
-  const key = usage.model || 'unknown';
-  const per = usageByModel[key] || (usageByModel[key] = { promptTokens: 0, cachedTokens: 0, completionTokens: 0, calls: 0 });
-  per.promptTokens += usage.promptTokens || 0;
-  per.cachedTokens += usage.cachedTokens || 0;
-  per.completionTokens += usage.completionTokens || 0;
-  per.calls += 1;
-  send('usage:update', { ...usageTotals, byModel: JSON.parse(JSON.stringify(usageByModel)) });
+  usageTotals = accumulateUsage(usageTotals, usage);
+  usageLifetime = accumulateUsage(usageLifetime, usage, { lifetime: true });
+  scheduleUsagePersistence();
+  usageUpdate();
 }
 
 // -------- live insights panel --------
@@ -917,6 +928,12 @@ ipcMain.handle('settings:set', (_e, patch) => {
   if (patch && patch.persona) resetInsights();
   return saved;
 });
+ipcMain.handle('usage:lifetime-reset', () => {
+  usageLifetime = emptyUsage({ lifetime: true });
+  persistUsageLifetime();
+  usageUpdate();
+  return usageLifetime;
+});
 ipcMain.on('search:respond', (_e, { id, allowed } = {}) => {
   const finish = pendingSearchRequests.get(id);
   if (finish) finish(allowed);
@@ -1242,6 +1259,7 @@ app.whenReady().then(async () => {
 });
 
 app.on('will-quit', () => {
+  persistUsageLifetime();
   globalShortcut.unregisterAll();
   // Best effort, deliberately not blocking the quit: the library also removes
   // the instance file from a `process.on('exit')` handler, and a file left

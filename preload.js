@@ -5,6 +5,7 @@ contextBridge.exposeInMainWorld('cue', {
   platform,
   settingsGet: () => ipcRenderer.invoke('settings:get'),
   settingsSet: (patch) => ipcRenderer.invoke('settings:set', patch),
+  usageLifetimeReset: () => ipcRenderer.invoke('usage:lifetime-reset'),
   whisperModels: () => ipcRenderer.invoke('whisper:models'),
   whisperModelDownload: (modelId) => ipcRenderer.invoke('whisper:model-download', modelId),
   whisperModelCancel: (modelId) => ipcRenderer.invoke('whisper:model-cancel', modelId),

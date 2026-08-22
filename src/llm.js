@@ -2,13 +2,16 @@
 // stream({ system, turns:[{role,text}], imageDataUrl, maxTokens, onToken }) -> Promise<fullText>
 
 const { createCompatibleClientOptions } = require('./openai-compatible');
+const { getConfiguredSources } = require('./search');
 
 const CUSTOM_PROVIDER = 'custom';
-const SEARCH_FACTS_TOOL = {
+function buildSearchFactsTool(apiKeys) {
+  const sources = getConfiguredSources(apiKeys).join(', ');
+  return {
   type: 'function',
   function: {
     name: 'search_facts',
-    description: 'Verify a specific factual claim before answering.',
+    description: `Verify a specific factual claim before answering. Sources currently configured: ${sources}. Prefer SEC EDGAR for filings, Federal Register for regulations, and FMP calendars for forward events. The result always names its source for citation.`,
     parameters: {
       type: 'object',
       properties: { query: { type: 'string', description: 'The specific factual claim to verify.' } },
@@ -16,7 +19,8 @@ const SEARCH_FACTS_TOOL = {
       additionalProperties: false
     }
   }
-};
+  };
+}
 // gemini-2.0-flash was Google's default here until it was deprecated (Feb 2026)
 // and fully retired (Mar 3 2026) — every request against it now 404s with a
 // generic "exception parsing response" body. gemini-2.5-flash is the model
@@ -170,7 +174,7 @@ function createOpenAIRequest({ model, messages, maxTokens, isDeepSeek, thinkingE
   return request;
 }
 
-async function streamOpenAI({ apiKey, baseURL, model, system, turns, imageDataUrl, maxTokens, onToken, onActivity, onUsage, thinkingEnabled, mode, onToolCall }) {
+async function streamOpenAI({ apiKey, baseURL, model, system, turns, imageDataUrl, maxTokens, onToken, onActivity, onUsage, thinkingEnabled, mode, onToolCall, searchTool }) {
   const supportsVision = modelSupportsVision(model);
   const OpenAI = require('openai');
   const client = new OpenAI(baseURL ? { apiKey, baseURL } : { apiKey });
@@ -190,7 +194,7 @@ async function streamOpenAI({ apiKey, baseURL, model, system, turns, imageDataUr
   });
   const isDeepSeek = /deepseek/i.test(baseURL || '') || /^deepseek/i.test(model || '');
   const first = await consumeOpenAIStream(await client.chat.completions.create(createOpenAIRequest({
-    model, messages, maxTokens, isDeepSeek, thinkingEnabled, mode, tools: onToolCall ? [SEARCH_FACTS_TOOL] : null
+    model, messages, maxTokens, isDeepSeek, thinkingEnabled, mode, tools: onToolCall ? [searchTool] : null
   })), { model, onToken, onActivity, onUsage });
   const toolCall = onToolCall && first.toolCalls.find((call) => call.function.name === 'search_facts');
   if (!toolCall) return first.full;
@@ -524,7 +528,7 @@ function createLLM(settings, { forceTier } = {}) {
     configurationError,
     async stream(params) {
       if (!ready) throw new Error(configurationError || `Complete the ${provider} provider settings.`);
-      const args = { apiKey, baseURL, endpoint, model, maxTokens, thinkingEnabled: tier === 'smart', ...params, turns: sanitizeTurns(params.turns) };
+      const args = { apiKey, baseURL, endpoint, model, maxTokens, thinkingEnabled: tier === 'smart', ...params, searchTool: params.onToolCall ? buildSearchFactsTool(keys) : null, turns: sanitizeTurns(params.turns) };
       try {
         if (provider === 'openai') return await streamOpenAI(args);
         if (provider === CUSTOM_PROVIDER) return await streamOpenAI(args);

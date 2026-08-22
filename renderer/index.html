@@ -219,6 +219,12 @@
         <div class="s-field"><span>Groq</span><input id="key-groq" type="password" placeholder="gsk_..." autocomplete="off" /></div>
         <div class="s-field"><span>Azure AI Foundry</span><input id="key-azure" type="password" placeholder="azure key or Entra token" autocomplete="off" /></div>
 
+        <label class="s-label">Optional search keys <span class="s-hint">Wikipedia works with no key at all</span></label>
+        <div class="s-field"><span>FMP <small>optional · company financials</small></span><input id="key-fmp" type="password" placeholder="Financial Modeling Prep key" autocomplete="off" /></div>
+        <div class="s-field"><span>Finnhub <small>optional · news and metrics</small></span><input id="key-finnhub" type="password" placeholder="Finnhub key" autocomplete="off" /></div>
+        <div class="s-field"><span>Brave <small>optional · web search</small></span><input id="key-brave" type="password" placeholder="Brave Search API key" autocomplete="off" /></div>
+        <div class="s-field"><span>Tavily <small>optional · LLM search</small></span><input id="key-tavily" type="password" placeholder="Tavily API key" autocomplete="off" /></div>
+
         <label class="s-label">Azure endpoint <span class="s-hint">Azure OpenAI: https://&lt;resource&gt;.openai.azure.com/openai · AI Foundry: https://&lt;host&gt;.cognitiveservices.azure.com (cue adds /openai/v1)</span></label>
         <div class="s-field"><span>Endpoint</span><input id="azure-endpoint" type="text" placeholder="https://host.cognitiveservices.azure.com" autocomplete="off" /></div>
 
@@ -324,6 +330,11 @@
         <textarea id="standing-context" rows="4" spellcheck="false" placeholder="Who you are, your company, role, project, or facts that are always true."></textarea>
         <div class="s-note">This stays with cue across restarts and is included in every persona.</div>
         <div class="s-note persistence-summary" id="persistence-summary"></div>
+        <div class="lifetime-spend" id="lifetime-spend">
+          <span id="lifetime-spend-text">Lifetime spend: $0.00</span>
+          <button type="button" id="reset-lifetime-btn">Reset counter</button>
+          <span id="reset-lifetime-confirm" class="hidden">Reset lifetime counter? <button type="button" id="reset-lifetime-confirm-btn">Reset</button><button type="button" id="reset-lifetime-cancel-btn">Cancel</button></span>
+        </div>
 
         <label class="s-label">Mode <span class="s-hint">what cue is helping you do</span></label>
         <div class="s-seg s-seg-wrap" id="persona-seg">
@@ -332,7 +343,7 @@
         </div>
         <div class="s-note">Interview keeps every original prompt. Fact-check repoints the same buttons at challenging claims other people make.</div>
 
-        <label class="s-label" style="margin-top:14px;">Fact search <span class="s-hint">Wikipedia; offered only in Normal and Fact-check modes</span></label>
+        <label class="s-label" style="margin-top:14px;">Fact search <span class="s-hint">Wikipedia plus any configured sources; offered only in Normal and Fact-check modes</span></label>
         <div class="s-seg" id="search-mode-seg">
           <button data-search-mode="off">Off</button>
           <button data-search-mode="ask">Ask first</button>

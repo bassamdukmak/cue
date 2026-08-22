@@ -1226,11 +1226,11 @@
     if (!aiEl) startAi(true);
     aiEl.dataset.raw = message; finalizeAi(); setBusy(false);
   });
-  cue.on('search:request', ({ id, query }) => {
+  cue.on('search:request', ({ id, query, sources }) => {
     const chip = document.createElement('div');
     chip.className = 'search-chip';
     const label = document.createElement('span');
-    label.textContent = `Search Wikipedia: ${query}`;
+    label.textContent = `Search ${sources || 'Wikipedia'}: ${query}`;
     const allow = document.createElement('button');
     allow.textContent = 'Allow';
     const deny = document.createElement('button');
@@ -1339,9 +1339,7 @@
   // actually spent, which is the number the user is exposed to.
   function updatePrepStatus() { /* replaced by the usage bar */ }
 
-  // Per-million-token rates, input then output. Only for the models cue is
-  // actually pointed at — an unknown model shows tokens with no price rather
-  // than a confidently wrong number. Rates move, so this is labelled an estimate.
+  // Legacy fallback for an older main process that does not send costUsd.
   const MODEL_RATES = {
     'deepseek-chat': { in: 0.27, cachedIn: 0.028, out: 1.10 },
     'deepseek-reasoner': { in: 0.55, cachedIn: 0.14, out: 2.19 },
@@ -1372,12 +1370,26 @@
     return sum;
   }
 
-  cue.on('usage:update', (totals) => {
+  function formatLifetimeSince(since) {
+    if (!since) return '';
+    const date = new Date(since);
+    return Number.isNaN(date.valueOf()) ? '' : ` since ${date.toLocaleDateString([], { day: 'numeric', month: 'short' })}`;
+  }
+
+  function renderLifetimeSpend(lifetime) {
+    const text = $('#lifetime-spend-text');
+    if (!text) return;
+    const total = Number(lifetime?.costUsd) || 0;
+    text.textContent = `Lifetime spend: $${total.toFixed(2)}${formatLifetimeSince(lifetime?.since)}`;
+  }
+
+  cue.on('usage:update', (payload) => {
     const bar = $('#usage-bar');
     if (!bar) return;
+    const totals = payload?.session || payload;
     bar.classList.remove('hidden');
     const models = Object.keys(totals.byModel || {});
-    const cost = estimateSessionCost(totals.byModel);
+    const cost = typeof totals.costUsd === 'number' ? totals.costUsd : estimateSessionCost(totals.byModel);
     const cachedPct = totals.promptTokens
       ? Math.round((totals.cachedTokens / totals.promptTokens) * 100) : 0;
     const parts = [
@@ -1387,10 +1399,17 @@
     ];
     if (totals.cachedTokens) parts.push(`${cachedPct}% cached`);
     if (cost !== null) parts.push(`~$${cost.toFixed(4)}`);
+    const lifetime = payload?.lifetime;
+    if (lifetime) parts.push(`| total $${(Number(lifetime.costUsd) || 0).toFixed(2)}${formatLifetimeSince(lifetime.since)}`);
     $('#usage-text').textContent = parts.join(' · ');
-    $('#usage-bar').title = cost === null
-      ? 'Token usage this session. No price on file for ' + (models.join(', ') || 'this model') + '.'
+    const unpriced = totals.unpricedModels || (cost === null ? models : []);
+    $('#usage-bar').title = unpriced.length
+      ? `Token usage this session. Unpriced models contribute $0: ${unpriced.join(', ')}.`
       : 'Estimated from published rates for ' + models.join(', ') + '. Check your provider dashboard for the real figure.';
+    if (lifetime && settings) {
+      settings.usageLifetime = lifetime;
+      renderLifetimeSpend(lifetime);
+    }
   });
 
   function updateSmartTooltip() {
@@ -1478,6 +1497,10 @@
     $('#key-minimax').value = settings.apiKeys.minimax || '';
     document.querySelectorAll('#minimax-region-seg button').forEach((b) => b.classList.toggle('on', b.dataset.region === (settings.minimaxRegion || 'global_en')));
     $('#key-azure').value = settings.apiKeys.azure || '';
+    $('#key-fmp').value = settings.apiKeys.fmp || '';
+    $('#key-finnhub').value = settings.apiKeys.finnhub || '';
+    $('#key-brave').value = settings.apiKeys.brave || '';
+    $('#key-tavily').value = settings.apiKeys.tavily || '';
     $('#azure-endpoint').value = settings.azureEndpoint || '';
     const m = settings.models[settings.provider] || { fast: '', smart: '' };
     $('#model-fast').value = m.fast; $('#model-smart').value = m.smart;
@@ -1506,6 +1529,7 @@
     $('#negotiation-notes').value = settings.negotiationNotes || '';
     renderDocumentsSummary();
     renderPersistenceSummary();
+    renderLifetimeSpend(settings.usageLifetime);
     meetingGoal.value = settings.meetingGoal || '';
     updateGoalControl();
     document.querySelectorAll('#persona-seg button').forEach((b) => b.classList.toggle('on', b.dataset.persona === (settings.persona || 'interview')));
@@ -1640,6 +1664,22 @@
     settings.searchMode = b.dataset.searchMode;
     document.querySelectorAll('#search-mode-seg button').forEach((x) => x.classList.toggle('on', x === b));
   }));
+  const resetLifetimeBtn = $('#reset-lifetime-btn');
+  const resetLifetimeConfirm = $('#reset-lifetime-confirm');
+  if (resetLifetimeBtn && resetLifetimeConfirm) {
+    resetLifetimeBtn.addEventListener('click', () => resetLifetimeConfirm.classList.remove('hidden'));
+    $('#reset-lifetime-cancel-btn').addEventListener('click', () => resetLifetimeConfirm.classList.add('hidden'));
+    $('#reset-lifetime-confirm-btn').addEventListener('click', async () => {
+      try {
+        const lifetime = await cue.usageLifetimeReset();
+        settings.usageLifetime = lifetime;
+        renderLifetimeSpend(lifetime);
+        resetLifetimeConfirm.classList.add('hidden');
+      } catch (error) {
+        showStatus('Lifetime counter was not reset: ' + (error?.message || error));
+      }
+    });
+  }
   // These mirror the overlay's mode menu, so they route through setPersona and
   // save immediately rather than waiting for the Settings Save button.
   document.querySelectorAll('#persona-seg button').forEach((b) => b.addEventListener('click', () => {
@@ -1946,6 +1986,10 @@
     settings.apiKeys.groq = $('#key-groq').value.trim();
     settings.apiKeys.minimax = $('#key-minimax').value.trim();
     settings.apiKeys.azure = $('#key-azure').value.trim();
+    settings.apiKeys.fmp = $('#key-fmp').value.trim();
+    settings.apiKeys.finnhub = $('#key-finnhub').value.trim();
+    settings.apiKeys.brave = $('#key-brave').value.trim();
+    settings.apiKeys.tavily = $('#key-tavily').value.trim();
     settings.azureEndpoint = $('#azure-endpoint').value.trim();
     if (!settings.models[settings.provider]) settings.models[settings.provider] = {};
     settings.models[settings.provider].fast = $('#model-fast').value.trim();
