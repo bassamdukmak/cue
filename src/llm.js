@@ -23,7 +23,7 @@ const SEARCH_FACTS_TOOL = {
 // Google's own SDK examples standardize on and is documented as free-tier
 // available, so it is the single default used everywhere in this file.
 const CURRENT_GEMINI_DEFAULT = 'gemini-2.5-flash';
-const CURRENT_DEEPSEEK_DEFAULT = 'deepseek-v4-flash';
+const CURRENT_DEEPSEEK_DEFAULT = 'deepseek-v4-flash-vision-exp';
 const DEFAULT_MODELS = {
   openai: 'gpt-4o-mini',
   anthropic: 'claude-3-5-haiku-latest',
@@ -121,12 +121,13 @@ function stripDataUrl(dataUrl) {
   return m ? { mime: m[1], b64: m[2] } : null;
 }
 
-// Text-only OpenAI-compatible endpoints (DeepSeek among them) reject the
-// image_url content part outright, so a screenshot would fail the whole request
-// rather than simply being ignored. Drop the image and answer from the
-// transcript instead — a degraded answer beats an error mid-meeting.
+// DeepSeek V4 Flash and Pro are text-only. Vision Exp is a separate model id
+// with the same OpenAI-compatible image_url content part as other providers.
 function modelSupportsVision(model, provider) {
-  return provider !== 'claudecli' && !/deepseek|qwen-?turbo|^text-|moonshot-v1-(8|32|128)k$|^(haiku|sonnet|opus)$/i.test(String(model || ''));
+  const name = String(model || '');
+  return provider !== 'claudecli'
+    && (!/deepseek/i.test(name) || /^deepseek-v4-flash-vision-exp$/i.test(name))
+    && !/qwen-?turbo|^text-|moonshot-v1-(8|32|128)k$|^(haiku|sonnet|opus)$/i.test(name);
 }
 
 function appendToolCall(calls, delta) {

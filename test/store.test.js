@@ -85,3 +85,21 @@ test('new settings default to Ask first search and include Claude CLI models', (
     fs.rmSync(directory, { recursive: true, force: true });
   }
 });
+
+test('the former DeepSeek default pair migrates to Vision Exp without replacing explicit text-only choices', () => {
+  const directory = fs.mkdtempSync(path.join(os.tmpdir(), 'cue-store-'));
+  const file = path.join(directory, 'cue-data.json');
+  try {
+    fs.writeFileSync(file, JSON.stringify({ models: { custom: { fast: 'deepseek-v4-flash', smart: 'deepseek-v4-flash' } } }));
+    assert.deepEqual(loadStore(directory).getSettings().models.custom, {
+      fast: 'deepseek-v4-flash-vision-exp', smart: 'deepseek-v4-flash-vision-exp'
+    });
+
+    fs.writeFileSync(file, JSON.stringify({ models: { custom: { fast: 'deepseek-v4-flash', smart: 'other-model' } } }));
+    assert.deepEqual(loadStore(directory).getSettings().models.custom, {
+      fast: 'deepseek-v4-flash', smart: 'other-model'
+    });
+  } finally {
+    fs.rmSync(directory, { recursive: true, force: true });
+  }
+});

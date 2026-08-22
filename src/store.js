@@ -63,7 +63,7 @@ const DEFAULTS = {
     // (the previous default here) was retired by Google on 2026-03-03 and 404s
     // on every request. gemini-2.5-flash is current and free-tier available.
     gemini: { fast: 'gemini-2.5-flash', smart: 'gemini-2.5-flash' },
-    custom: { fast: 'deepseek-v4-flash', smart: 'deepseek-v4-flash' },
+    custom: { fast: 'deepseek-v4-flash-vision-exp', smart: 'deepseek-v4-flash-vision-exp' },
     ollama: { fast: 'llama3.2', smart: 'llama3.3' },
     groq: { fast: 'llama-3.1-8b-instant', smart: 'llama-3.3-70b-versatile' },
     minimax: { fast: 'MiniMax-M2.7', smart: 'MiniMax-M3' },
@@ -91,14 +91,23 @@ function deepMerge(base, over) {
 }
 
 function migrateSettings(stored) {
-  if (!stored || typeof stored !== 'object' || !Object.hasOwn(stored, 'aggression')) return stored;
+  if (!stored || typeof stored !== 'object') return stored;
   const { aggression, intensity, ...withoutAggression } = stored;
+  const custom = stored.models?.custom;
+  // Only migrate cue's former default pair; a user who selected text-only Flash
+  // for either tier keeps that explicit choice and the OCR fallback.
+  const wasPreviousDefault = custom?.fast === 'deepseek-v4-flash' && custom?.smart === 'deepseek-v4-flash';
   return {
     ...withoutAggression,
-    intensity: {
-      ...(intensity && typeof intensity === 'object' && !Array.isArray(intensity) ? intensity : {}),
-      attack: aggression,
-    },
+    ...(Object.hasOwn(stored, 'aggression') ? {
+      intensity: {
+        ...(intensity && typeof intensity === 'object' && !Array.isArray(intensity) ? intensity : {}),
+        attack: aggression,
+      },
+    } : {}),
+    ...(wasPreviousDefault ? {
+      models: { ...stored.models, custom: { ...custom, fast: 'deepseek-v4-flash-vision-exp', smart: 'deepseek-v4-flash-vision-exp' } },
+    } : {}),
   };
 }
 

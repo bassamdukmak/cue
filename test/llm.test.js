@@ -155,6 +155,24 @@ test('DeepSeek smart enables thinking without sending temperature', async () => 
   assert.equal(Object.hasOwn(capturedCompletionRequest, 'temperature'), false);
 });
 
+test('DeepSeek Vision Exp sends the original image as an OpenAI image_url part', async () => {
+  const llm = createLLM(deepseekSettings());
+  await llm.stream({
+    system: 's',
+    turns: [{ role: 'user', text: 'Read this screen.' }],
+    imageDataUrl: 'data:image/jpeg;base64,c2NyZWVu',
+    onToken: () => {}
+  });
+
+  assert.deepEqual(capturedCompletionRequest.messages.at(-1), {
+    role: 'user',
+    content: [
+      { type: 'text', text: 'Read this screen.' },
+      { type: 'image_url', image_url: { url: 'data:image/jpeg;base64,c2NyZWVu' } }
+    ]
+  });
+});
+
 test('DeepSeek LeetCode fast calls use temperature zero', async () => {
   const llm = createLLM(deepseekSettings());
   await llm.stream({ system: 's', turns: [{ role: 'user', text: 'hi' }], mode: 'leetcode', onToken: () => {} });

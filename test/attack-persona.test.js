@@ -179,16 +179,22 @@ test('documents lead the context so a cached prefix stays stable', () => {
 const { modelSupportsVision } = require('../src/llm');
 
 test('text-only models are never sent an image part', () => {
-  // DeepSeek rejects image_url outright, which would fail the whole request
-  // rather than degrade, so the screenshot has to be dropped before sending.
   assert.equal(modelSupportsVision('deepseek-v4-flash'), false);
+  assert.equal(modelSupportsVision('deepseek-v4-pro'), false);
   assert.equal(modelSupportsVision('haiku', 'claudecli'), false);
 });
 
 test('vision-capable models still receive images', () => {
+  assert.equal(modelSupportsVision('deepseek-v4-flash-vision-exp'), true);
   assert.equal(modelSupportsVision('gpt-4o'), true);
   assert.equal(modelSupportsVision('gpt-4o-mini'), true);
   assert.equal(modelSupportsVision('claude-3-5-sonnet-latest'), true);
+});
+
+test('text-only screen requests retain the OCR fallback', () => {
+  const runFeature = mainSource.slice(mainSource.indexOf('async function runFeature'));
+  assert.match(runFeature, /if \(!canSeeScreen\) \{\s*const ocr = await extractTextFromImage\(imageDataUrl\);/);
+  assert.match(runFeature, /if \(!canSeeScreen\) imageDataUrl = null;/);
 });
 
 test('selfcheck does not demand a screenshot it has no use for', () => {
