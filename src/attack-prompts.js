@@ -48,10 +48,14 @@ const OUTPUT_FORMAT =
   'Format your response with these exact line prefixes:\n'
   + 'SAY: <the one line the user says out loud, verbatim, first person>\n'
   + 'NOTE: <telegraphic context only>\n'
-  + 'Use exactly one SAY: line. SAY: <=20 words; speakable words only. Each NOTE: <=15 words, '
+  + 'SAY: <=20 words; speakable words only. Each NOTE: <=15 words, '
   + 'telegraphic; drop articles naturally. At most 2 NOTE: lines, except patterns may list items; '
   + 'each item stays <=15 words. Never restate their claim in full: reference it in <=6 words. '
   + 'No meta narration like "the screen states" or "the transcript shows". Lead with the answer, not reasoning.';
+
+function outputFormat(sayContract) {
+  return OUTPUT_FORMAT + '\nSAY-line contract: ' + sayContract;
+}
 
 const ATTACK_MODES = {
 
@@ -67,7 +71,7 @@ const ATTACK_MODES = {
         + 'the room; "You" is the user. Someone has just said something that may be false, '
         + 'overstated or unsupported.\n\n'
         + NO_SEARCH_RULES + '\n\n'
-        + OUTPUT_FORMAT + '\n\n'
+        + outputFormat('0 or 1') + '\n\n'
         + 'Reference the challenged claim in <=6 words. If nothing recent is genuinely worth challenging, reply with a '
         + 'single NOTE line saying so and stop — never manufacture a disagreement.',
         contextBlock), aiRules, 'challenge');
@@ -90,7 +94,7 @@ const ATTACK_MODES = {
         + 'attached — it may show slides, a document, a dashboard or code being discussed. '
         + 'Check what is being said against what is actually on screen.\n\n'
         + NO_SEARCH_RULES + '\n\n'
-        + OUTPUT_FORMAT + '\n\n'
+        + outputFormat('exactly 1') + '\n\n'
         + 'A claim contradicted by what is visibly on screen is the one case where you may be '
         + 'flatly confident — you can see it. Say so explicitly when that is why you are sure.',
         contextBlock), aiRules, 'factcheck');
@@ -114,7 +118,7 @@ const ATTACK_MODES = {
         + 'A confident generalist survives because nobody asks the second question. You supply '
         + 'the second question. Because these are questions rather than claims, they cost the '
         + 'user nothing if the speaker turns out to be right.\n\n'
-        + NO_SEARCH_RULES + '\n\n' + OUTPUT_FORMAT + '\n\n'
+        + NO_SEARCH_RULES + '\n\n' + outputFormat('0–3') + '\n\n'
         + 'Give up to 3 questions, each on its own SAY: line, ordered from most to least '
         + 'devastating. Each under 20 words, each answerable only with specifics, and each '
         + 'referring ONLY to things actually said in the transcript. Add one NOTE: line saying '
@@ -146,7 +150,7 @@ const ATTACK_MODES = {
         + 'For each pattern give: the name, who did it (or "unattributed" if names were never '
         + 'used), two short verbatim quotes as evidence, and one NOTE: line on how to counter it. '
         + 'If there are no genuine patterns, say so plainly.\n\n'
-        + NO_SEARCH_RULES + '\n\n' + OUTPUT_FORMAT,
+        + NO_SEARCH_RULES + '\n\n' + outputFormat('0; use NOTE lines only'),
         contextBlock), aiRules, 'patterns');
     },
     build(ctx) {
@@ -171,7 +175,7 @@ const ATTACK_MODES = {
         + 'fact in it you are not confident about; and any number they should verify before '
         + 'saying it. Only if the claim survives all three, give one SAY: line with the tightened '
         + 'version. If it does not survive, say so and give no SAY: line at all.\n\n'
-        + NO_SEARCH_RULES + '\n\n' + OUTPUT_FORMAT,
+        + NO_SEARCH_RULES + '\n\n' + outputFormat('0 or 1'),
         contextBlock), aiRules, 'selfcheck');
     },
     build(ctx) {
@@ -194,7 +198,7 @@ const ATTACK_MODES = {
         + 'challenge it. SHAKY means it may be true but is unsupported, imprecise or overstated — '
         + 'this is the most common and most useful verdict. WRONG requires near-certainty.\n\n'
         + NO_SEARCH_RULES + '\n\n'
-        + OUTPUT_FORMAT,
+        + outputFormat('0; use NOTE lines only'),
         contextBlock), aiRules, 'verdict');
     },
     build(ctx) {

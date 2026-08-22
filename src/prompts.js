@@ -30,10 +30,14 @@ const INTERVIEW_OUTPUT_FORMAT =
   'Format with these exact line prefixes:\n'
   + 'SAY: <the one line the candidate says out loud, verbatim, first person>\n'
   + 'NOTE: <telegraphic context only>\n'
-  + 'Use exactly one SAY: line. SAY: <=20 words; speakable words only. Each NOTE: <=15 words, '
+  + 'SAY: <=20 words; speakable words only. Each NOTE: <=15 words, '
   + 'telegraphic; drop articles naturally. At most 2 NOTE: lines, except recap may list items; '
   + 'each item stays <=15 words. Never restate their question in full: reference it in <=6 words. '
   + 'No meta narration. Lead with the answer, not reasoning.';
+
+function interviewOutputFormat(sayContract) {
+  return INTERVIEW_OUTPUT_FORMAT + '\nSAY-line contract: ' + sayContract;
+}
 
 const MODES = {
 
@@ -56,7 +60,7 @@ const MODES = {
         '• TECHNICAL/CONCEPTUAL: Explain clearly with examples. For LeetCode: short approach + solution + complexity.\n' +
         '• COMPENSATION ("salary expectations"): Use their stated target, give a confident range.\n' +
         '• "Any questions for us?": Offer 2–3 of their prepared questions.\n\n' +
-        'Write in first person as if the candidate is speaking.\n\n' + INTERVIEW_OUTPUT_FORMAT,
+        'Write in first person as if the candidate is speaking.\n\n' + interviewOutputFormat('exactly 1, except use 2–3 for “Any questions for us?”'),
         contextBlock
       ), aiRules, 'assist');
     },
@@ -85,7 +89,7 @@ const MODES = {
         '• EXPERIENCE: Reference the specific role/project from their resume.\n' +
         '• COMPENSATION: State the target range confidently without over-explaining.\n' +
         '• TECHNICAL: Give a clear, confident explanation. Use analogies for non-technical interviewers.\n\n' +
-        'No quotes or preamble.\n\n' + INTERVIEW_OUTPUT_FORMAT,
+        'No quotes or preamble.\n\n' + interviewOutputFormat('exactly 1'),
         contextBlock
       ), aiRules, 'say');
     },
@@ -107,7 +111,7 @@ const MODES = {
         'You are cue. Suggest 2–4 sharp follow-up questions the candidate could ask the interviewer.\n' +
         'Base them on what was discussed and the candidate\'s background/target role.\n' +
         'Good follow-ups: show genuine curiosity, demonstrate research, highlight the candidate\'s strengths, or uncover role details.\n' +
-        'Return each question as a SAY: line.\n\n' + INTERVIEW_OUTPUT_FORMAT,
+        'Return each question as a SAY: line.\n\n' + interviewOutputFormat('2–4'),
         contextBlock
       ), aiRules, 'followup');
     },
@@ -127,7 +131,7 @@ const MODES = {
       return applyRules(buildSystem(
         'You are cue. Summarize the interview so far:\n' +
         '• Topics covered\n• Questions asked\n• Key answers given\n• Any red flags or areas to strengthen\n' +
-        'Use NOTE: lines only.\n\n' + INTERVIEW_OUTPUT_FORMAT,
+        'Use NOTE: lines only.\n\n' + interviewOutputFormat('0; use NOTE lines only'),
         contextBlock
       ), aiRules, 'recap');
     },
@@ -149,7 +153,7 @@ const MODES = {
         BASE_RULES +
         'Answer the question directly and concisely. ' +
         'When the question is about the candidate\'s background, use their actual experience. ' +
-        'When the question is conceptual, explain clearly with examples.\n\n' + INTERVIEW_OUTPUT_FORMAT,
+        'When the question is conceptual, explain clearly with examples.\n\n' + interviewOutputFormat('exactly 1'),
         contextBlock
       ), aiRules, 'ask');
     },
@@ -177,7 +181,7 @@ const MODES = {
         '• EXPERIENCE: Reference specific roles/projects from their resume.\n' +
         '• COMPENSATION: State the salary target confidently in one sentence.\n' +
         '• SITUATIONAL: Structured thinking — "First I would X, then Y, because Z."\n\n' +
-        'Write in first person, as the candidate speaking.\n\n' + INTERVIEW_OUTPUT_FORMAT,
+        'Write in first person, as the candidate speaking.\n\n' + interviewOutputFormat('exactly 1'),
         contextBlock
       ), aiRules, 'answerThis');
     },
@@ -198,7 +202,8 @@ const MODES = {
       // stay strict regardless of personal style or context.
       return 'You are an expert competitive programmer. The screenshot contains a coding problem. ' +
         'Respond with: (1) a one-line restatement, (2) a short approach, (3) a clean, correct, idiomatic solution in a fenced code block ' +
-        '(use the language shown on screen, else Python), (4) time and space complexity. Keep prose tight.';
+        '(use the language shown on screen, else Python), (4) time and space complexity. Keep prose tight. '
+        + 'SAY-line contract: 0; use the listed coding sections, not SAY:/NOTE: prefixes.';
     },
     build() { return 'Solve the coding problem shown in the screenshot.'; }
   }

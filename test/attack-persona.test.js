@@ -181,8 +181,7 @@ const { modelSupportsVision } = require('../src/llm');
 test('text-only models are never sent an image part', () => {
   // DeepSeek rejects image_url outright, which would fail the whole request
   // rather than degrade, so the screenshot has to be dropped before sending.
-  assert.equal(modelSupportsVision('deepseek-chat'), false);
-  assert.equal(modelSupportsVision('deepseek-reasoner'), false);
+  assert.equal(modelSupportsVision('deepseek-v4-flash'), false);
 });
 
 test('vision-capable models still receive images', () => {

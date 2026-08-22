@@ -16,10 +16,14 @@ const OUTPUT_FORMAT =
   'Format with these exact line prefixes:\n'
   + 'SAY: <the words the user says out loud, verbatim, first person>\n'
   + 'NOTE: <telegraphic context only>\n'
-  + 'Use exactly one SAY: line when drafting what to say. SAY: <=20 words; speakable words only. Each NOTE: <=15 words, '
+  + 'SAY: <=20 words; speakable words only. Each NOTE: <=15 words, '
   + 'telegraphic; drop articles naturally. At most 2 NOTE: lines, except summary may list items; '
   + 'each item stays <=15 words. Never restate their claim in full: reference it in <=6 words. '
   + 'No meta narration. Lead with the answer, not reasoning.';
+
+function outputFormat(sayContract) {
+  return OUTPUT_FORMAT + '\nSAY-line contract: ' + sayContract;
+}
 
 const ROLE =
   'You are cue, a plain general-purpose assistant during a live meeting. "Them" is everyone '
@@ -34,7 +38,7 @@ const NORMAL_MODES = {
     buildSystem(contextBlock, aiRules) {
       return applyRules(buildSystem(
         ROLE + 'Give the most useful thing for the user to say next, in first person.\n\n'
-        + NORMAL_RULES + '\n\n' + OUTPUT_FORMAT,
+        + NORMAL_RULES + '\n\n' + outputFormat('exactly 1'),
         contextBlock), aiRules, 'respond');
     },
     build(ctx) {
@@ -52,7 +56,7 @@ const NORMAL_MODES = {
       return applyRules(buildSystem(
         ROLE + 'Answer the user\'s immediate need using the conversation and what is on screen. '
         + 'Explain what matters, then give a concise next step when useful.\n\n'
-        + NORMAL_RULES + '\n\n' + OUTPUT_FORMAT,
+        + NORMAL_RULES + '\n\n' + outputFormat('0 or 1; add one only when a next step is useful'),
         contextBlock), aiRules, 'helpScreen');
     },
     build(ctx) {
@@ -70,7 +74,7 @@ const NORMAL_MODES = {
       return applyRules(buildSystem(
         ROLE + 'Give up to 3 useful questions that move this conversation forward. Put each on '
         + 'a separate SAY: line, most useful first.\n\n'
-        + NORMAL_RULES + '\n\n' + OUTPUT_FORMAT,
+        + NORMAL_RULES + '\n\n' + outputFormat('1–3'),
         contextBlock), aiRules, 'questions');
     },
     build(ctx) {
@@ -88,7 +92,7 @@ const NORMAL_MODES = {
       return applyRules(buildSystem(
         ROLE + 'Summarise the full transcript. Cover decisions, open points and next steps. Use '
         + 'NOTE: lines only; if nothing was decided or assigned, say so plainly.\n\n'
-        + NORMAL_RULES + '\n\n' + OUTPUT_FORMAT,
+        + NORMAL_RULES + '\n\n' + outputFormat('0; use NOTE lines only'),
         contextBlock), aiRules, 'summary');
     },
     build(ctx) {
@@ -105,7 +109,7 @@ const NORMAL_MODES = {
     buildSystem(contextBlock, aiRules) {
       return applyRules(buildSystem(
         ROLE + 'Answer whatever the user typed, using the meeting as context when relevant.\n\n'
-        + NORMAL_RULES + '\n\n' + OUTPUT_FORMAT,
+        + NORMAL_RULES + '\n\n' + outputFormat('0 or 1; add one only when drafting a reply helps'),
         contextBlock), aiRules, 'assist');
     },
     build(ctx) {
@@ -122,7 +126,7 @@ const NORMAL_MODES = {
     buildSystem(contextBlock, aiRules) {
       return applyRules(buildSystem(
         ROLE + 'Respond to the one captured line. Give the user the most useful answer to say, '
-        + 'in first person.\n\n' + NORMAL_RULES + '\n\n' + OUTPUT_FORMAT,
+        + 'in first person.\n\n' + NORMAL_RULES + '\n\n' + outputFormat('exactly 1'),
         contextBlock), aiRules, 'respondTo');
     },
     build(ctx) {

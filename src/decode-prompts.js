@@ -34,6 +34,10 @@ const OUTPUT_FORMAT =
   + 'At most 2 NOTE: lines, except glossary may list items; each item stays <=15 words. Never restate '
   + 'their claim in full: reference it in <=6 words. No meta narration. Lead with the answer, not reasoning.';
 
+function outputFormat(sayContract) {
+  return OUTPUT_FORMAT + '\nSAY-line contract: ' + sayContract;
+}
+
 const ROLE =
   'You are cue, explaining things quietly to the user during a live meeting. "Them" is '
   + 'everyone else; "You" is the user. The user does not want to stop the meeting to admit '
@@ -51,7 +55,7 @@ const DECODE_MODES = {
       return applyRules(buildSystem(
         ROLE + 'Find the term or idea in the recent conversation that a capable outsider would '
         + 'most likely not follow, and explain it.\n\n'
-        + DECODE_RULES + '\n\n' + OUTPUT_FORMAT + '\n\n'
+        + DECODE_RULES + '\n\n' + outputFormat('0 or 1; only ask for an internal term') + '\n\n'
         + 'Lead with the term and plain-language meaning. If everything recent was plain language, '
         + 'say so rather than inventing something to explain.',
         contextBlock), aiRules, 'define');
@@ -72,7 +76,7 @@ const DECODE_MODES = {
       return applyRules(buildSystem(
         ROLE + 'A screenshot of the screen is attached — a diagram, dashboard, spreadsheet or '
         + 'code being discussed. Explain what the user is looking at.\n\n'
-        + DECODE_RULES + '\n\n' + OUTPUT_FORMAT + '\n\n'
+        + DECODE_RULES + '\n\n' + outputFormat('0 or 1; only ask for an internal term') + '\n\n'
         + 'Say what it IS first, then only the parts that matter. Skip decoration.',
         contextBlock), aiRules, 'decodeScreen');
     },
@@ -99,7 +103,7 @@ const DECODE_MODES = {
         + 'answer.\n\n'
         + 'Give 2 options on separate SAY: lines and one NOTE: line on '
         + 'what each one signals to the room.\n\n'
-        + DECODE_RULES + '\n\n' + OUTPUT_FORMAT,
+        + DECODE_RULES + '\n\n' + outputFormat('exactly 2'),
         contextBlock), aiRules, 'askSmart');
     },
     build(ctx) {
@@ -121,7 +125,7 @@ const DECODE_MODES = {
         + 'One NOTE: line each, shortest first: the term, then a plain definition. Mark every '
         + 'company-specific term as INTERNAL and do not invent a meaning for it — list it as '
         + 'something to find out. Skip anything genuinely common.\n\n'
-        + DECODE_RULES + '\n\n' + OUTPUT_FORMAT,
+        + DECODE_RULES + '\n\n' + outputFormat('0; use NOTE lines only'),
         contextBlock), aiRules, 'glossary');
     },
     build(ctx) {
@@ -140,7 +144,7 @@ const DECODE_MODES = {
       return applyRules(buildSystem(
         ROLE + 'Explain what the user asks about, using the meeting as context for which sense '
         + 'of the term is meant.\n\n'
-        + DECODE_RULES + '\n\n' + OUTPUT_FORMAT,
+        + DECODE_RULES + '\n\n' + outputFormat('0 or 1; only ask for an internal term'),
         contextBlock), aiRules, 'explain');
     },
     build(ctx) {
@@ -160,7 +164,7 @@ const DECODE_MODES = {
         ROLE + 'The user captured one specific thing that was said. Explain just that.\n\n'
         + 'Be brief — one or two NOTE: lines. Say plainly when it looks like internal company '
         + 'shorthand you cannot know.\n\n'
-        + DECODE_RULES + '\n\n' + OUTPUT_FORMAT,
+        + DECODE_RULES + '\n\n' + outputFormat('0; use NOTE lines only'),
         contextBlock), aiRules, 'defineThis');
     },
     build(ctx) {

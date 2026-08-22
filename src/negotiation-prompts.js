@@ -23,10 +23,14 @@ const OUTPUT_FORMAT =
   'Format with these exact line prefixes:\n'
   + 'SAY: <the one line the user says out loud, verbatim, first person>\n'
   + 'NOTE: <telegraphic context only>\n'
-  + 'Use exactly one SAY: line. SAY: <=20 words; speakable words only. Each NOTE: <=15 words, '
+  + 'SAY: <=20 words; speakable words only. Each NOTE: <=15 words, '
   + 'telegraphic; drop articles naturally. At most 2 NOTE: lines, except ledger may list items; '
   + 'each item stays <=15 words. Never restate their claim in full: reference it in <=6 words. '
   + 'No meta narration. Lead with the answer, not reasoning.';
+
+function outputFormat(sayContract) {
+  return OUTPUT_FORMAT + '\nSAY-line contract: ' + sayContract;
+}
 
 function buildNegotiationContext(settings, _transcript) {
   const parts = [];
@@ -61,7 +65,7 @@ const NEGOTIATION_MODES = {
     buildContext: buildNegotiationContext,
     buildSystem(contextBlock, aiRules) {
       return applyRules(buildSystem(
-        ROLE + NEGOTIATION_RULES + '\n\n' + OUTPUT_FORMAT + '\n\n'
+        ROLE + NEGOTIATION_RULES + '\n\n' + outputFormat('exactly 1') + '\n\n'
         + 'If they have just made an offer, do not accept or '
         + 'reject it in that line — acknowledge and ask something that makes them justify it.',
         contextBlock), aiRules, 'respond');
@@ -84,7 +88,7 @@ const NEGOTIATION_MODES = {
         + 'Give NOTE: lines for — who anchored first and at what; what each side has conceded '
         + 'so far; what they have signalled they care about beyond price; and where the user '
         + 'currently has leverage. End with the single biggest risk in the next five minutes.\n\n'
-        + NEGOTIATION_RULES + '\n\n' + OUTPUT_FORMAT,
+        + NEGOTIATION_RULES + '\n\n' + outputFormat('0; use NOTE lines only'),
         contextBlock), aiRules, 'position');
     },
     build(ctx) {
@@ -105,7 +109,7 @@ const NEGOTIATION_MODES = {
         + 'flexibility. Questions cost nothing and shift the burden onto them.\n\n'
         + 'Give 3, each on its own SAY: line, most effective first. '
         + 'Add one NOTE: line on what a hesitant answer to the first would tell us.\n\n'
-        + NEGOTIATION_RULES + '\n\n' + OUTPUT_FORMAT,
+        + NEGOTIATION_RULES + '\n\n' + outputFormat('exactly 3'),
         contextBlock), aiRules, 'press');
     },
     build(ctx) {
@@ -127,7 +131,7 @@ const NEGOTIATION_MODES = {
         + 'everything the user has agreed to, explicitly or implicitly; everything the other '
         + 'side has agreed to; and what is still open. Quote verbatim for anything the user '
         + 'may have conceded without meaning to — that is the whole point of this view.\n\n'
-        + NEGOTIATION_RULES + '\n\n' + OUTPUT_FORMAT,
+        + NEGOTIATION_RULES + '\n\n' + outputFormat('0; use NOTE lines only'),
         contextBlock), aiRules, 'ledger');
     },
     build(ctx) {
@@ -150,7 +154,7 @@ const NEGOTIATION_MODES = {
         + 'Give NOTE: lines for what it concedes and how the other side will most likely '
         + 'respond. Then one SAY: line with a version that keeps the same intent while giving '
         + 'away less. If it should not be said at all, say so and give no SAY: line.\n\n'
-        + NEGOTIATION_RULES + '\n\n' + OUTPUT_FORMAT,
+        + NEGOTIATION_RULES + '\n\n' + outputFormat('0 or 1'),
         contextBlock), aiRules, 'rehearse');
     },
     build(ctx) {
@@ -171,7 +175,7 @@ const NEGOTIATION_MODES = {
         + 'NOTE: what it means in plain terms, whether it is a real constraint or a tactic '
         + '(exploding deadline, false scarcity, appeal to policy, good-cop/bad-cop), and what '
         + 'it reveals about their position. Then one SAY: line as the response.\n\n'
-        + NEGOTIATION_RULES + '\n\n' + OUTPUT_FORMAT,
+        + NEGOTIATION_RULES + '\n\n' + outputFormat('exactly 1'),
         contextBlock), aiRules, 'decode');
     },
     build(ctx) {

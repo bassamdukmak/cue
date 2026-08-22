@@ -27,10 +27,14 @@ const OUTPUT_FORMAT =
   'Format with these exact line prefixes:\n'
   + 'SAY: <the words the user says out loud, verbatim, first person>\n'
   + 'NOTE: <telegraphic context only>\n'
-  + 'Use exactly one SAY: line. SAY: <=20 words; speakable words only. Each NOTE: <=15 words, '
+  + 'SAY: <=20 words; speakable words only. Each NOTE: <=15 words, '
   + 'telegraphic; drop articles naturally. At most 2 NOTE: lines, except commitments may list items; '
   + 'each item stays <=15 words. Never restate their claim in full: reference it in <=6 words. '
   + 'No meta narration. Lead with the answer, not reasoning.';
+
+function outputFormat(sayContract) {
+  return OUTPUT_FORMAT + '\nSAY-line contract: ' + sayContract;
+}
 
 const ROLE =
   'You are cue, helping the user during a live status meeting or standup. "Them" is everyone '
@@ -51,7 +55,7 @@ const STANDUP_MODES = {
         + 'Three parts, tight: what moved, what is next, what is in the way. '
         + 'total. Do not include a date unless the user has already given one — offering a '
         + 'date they did not choose is how they end up committed to it.\n\n'
-        + STANDUP_RULES + '\n\n' + OUTPUT_FORMAT,
+        + STANDUP_RULES + '\n\n' + outputFormat('exactly 1'),
         contextBlock), aiRules, 'update');
     },
     build(ctx) {
@@ -73,7 +77,7 @@ const STANDUP_MODES = {
         + 'on someone in this meeting that is easier to secure now than over chat, and anything '
         + 'they are being volunteered for without it being said outright. Then one SAY: line '
         + 'raising the most important of them.\n\n'
-        + STANDUP_RULES + '\n\n' + OUTPUT_FORMAT,
+        + STANDUP_RULES + '\n\n' + outputFormat('exactly 1'),
         contextBlock), aiRules, 'blockers');
     },
     build(ctx) {
@@ -94,7 +98,7 @@ const STANDUP_MODES = {
         + 'nobody named, a date nobody confirmed, a hand-off with no agreed shape.\n\n'
         + 'Give up to 3 questions on separate SAY: lines, most costly '
         + 'ambiguity first. Add one NOTE: line on what goes wrong if the first stays unanswered.\n\n'
-        + STANDUP_RULES + '\n\n' + OUTPUT_FORMAT,
+        + STANDUP_RULES + '\n\n' + outputFormat('1–3'),
         contextBlock), aiRules, 'clarify');
     },
     build(ctx) {
@@ -119,7 +123,7 @@ const STANDUP_MODES = {
         + 'End with a NOTE: line naming anything that looks like too much for one person in the '
         + 'time discussed, based only on what was said in this meeting. If nothing was '
         + 'committed, say so plainly.\n\n'
-        + STANDUP_RULES + '\n\n' + OUTPUT_FORMAT,
+        + STANDUP_RULES + '\n\n' + outputFormat('0; use NOTE lines only'),
         contextBlock), aiRules, 'commitments');
     },
     build(ctx) {
@@ -144,7 +148,7 @@ const STANDUP_MODES = {
         + 'commits to the work while making the conditions explicit.\n\n'
         + 'Adding a condition out loud is not hedging — it is the difference between a plan and '
         + 'a promise. But never talk the user out of committing; that is their call.\n\n'
-        + STANDUP_RULES + '\n\n' + OUTPUT_FORMAT,
+        + STANDUP_RULES + '\n\n' + outputFormat('exactly 1'),
         contextBlock), aiRules, 'checkCommit');
     },
     build(ctx) {
@@ -167,7 +171,7 @@ const STANDUP_MODES = {
         + 'the user would be agreeing to by saying yes; and what is left undefined. Then one '
         + 'SAY: line that either accepts with the scope made explicit, or asks the question that '
         + 'pins it down.\n\n'
-        + STANDUP_RULES + '\n\n' + OUTPUT_FORMAT,
+        + STANDUP_RULES + '\n\n' + outputFormat('exactly 1'),
         contextBlock), aiRules, 'parseAsk');
     },
     build(ctx) {

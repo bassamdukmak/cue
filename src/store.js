@@ -62,7 +62,7 @@ const DEFAULTS = {
     // (the previous default here) was retired by Google on 2026-03-03 and 404s
     // on every request. gemini-2.5-flash is current and free-tier available.
     gemini: { fast: 'gemini-2.5-flash', smart: 'gemini-2.5-flash' },
-    custom: { fast: '', smart: '' },
+    custom: { fast: 'deepseek-v4-flash', smart: 'deepseek-v4-flash' },
     ollama: { fast: 'llama3.2', smart: 'llama3.3' },
     groq: { fast: 'llama-3.1-8b-instant', smart: 'llama-3.3-70b-versatile' },
     minimax: { fast: 'MiniMax-M2.7', smart: 'MiniMax-M3' },

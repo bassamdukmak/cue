@@ -10,6 +10,7 @@ const CUSTOM_PROVIDER = 'custom';
 // Google's own SDK examples standardize on and is documented as free-tier
 // available, so it is the single default used everywhere in this file.
 const CURRENT_GEMINI_DEFAULT = 'gemini-2.5-flash';
+const CURRENT_DEEPSEEK_DEFAULT = 'deepseek-v4-flash';
 const DEFAULT_MODELS = {
   openai: 'gpt-4o-mini',
   anthropic: 'claude-3-5-haiku-latest',
@@ -25,6 +26,7 @@ const DEFAULT_MODELS = {
 // createLLM migrates them at read time rather than only fixing the default —
 // otherwise an existing user would keep re-hitting the same 404 forever.
 const DEAD_GEMINI_MODEL_RE = /^gemini-(1\.0|1\.5|2\.0)(?:-|$)/i;
+const DEAD_DEEPSEEK_MODEL_RE = /^deepseek-(?:chat|reasoner)$/i;
 
 const PROVIDER_LABELS = { azure: 'Azure AI Foundry', openai: 'OpenAI', minimax: 'MiniMax' };
 
@@ -113,7 +115,7 @@ function modelSupportsVision(model) {
   return !/deepseek|qwen-?turbo|^text-|moonshot-v1-(8|32|128)k$/i.test(String(model || ''));
 }
 
-async function streamOpenAI({ apiKey, baseURL, model, system, turns, imageDataUrl, maxTokens, onToken, onUsage }) {
+async function streamOpenAI({ apiKey, baseURL, model, system, turns, imageDataUrl, maxTokens, onToken, onActivity, onUsage, thinkingEnabled, mode }) {
   const supportsVision = modelSupportsVision(model);
   const OpenAI = require('openai');
   const client = new OpenAI(baseURL ? { apiKey, baseURL } : { apiKey });
@@ -131,16 +133,26 @@ async function streamOpenAI({ apiKey, baseURL, model, system, turns, imageDataUr
       messages.push({ role: t.role, content: t.text });
     }
   });
-  const stream = await client.chat.completions.create({
+  const isDeepSeek = /deepseek/i.test(baseURL || '') || /^deepseek/i.test(model || '');
+  const request = {
     model, messages, stream: true, max_tokens: maxTokens,
     // Providers omit usage from streamed responses unless asked, and without it
     // there is no way to tell the user what a session actually cost.
     stream_options: { include_usage: true },
-  });
+  };
+  if (isDeepSeek) {
+    // The installed OpenAI SDK forwards this request body unchanged; it has no
+    // extra_body option in this version.
+    request.thinking = { type: thinkingEnabled ? 'enabled' : 'disabled' };
+    if (!thinkingEnabled) request.temperature = mode === 'leetcode' ? 0 : 1;
+  }
+  const stream = await client.chat.completions.create(request);
   let full = '';
   for await (const part of stream) {
     const d = part.choices && part.choices[0] && part.choices[0].delta && part.choices[0].delta.content;
     if (d) { full += d; onToken(d); }
+    const reasoning = part.choices && part.choices[0] && part.choices[0].delta && part.choices[0].delta.reasoning_content;
+    if (reasoning && onActivity) onActivity();
     // Arrives on the final chunk, after the last content delta.
     if (part.usage && onUsage) onUsage(normalizeUsage(part.usage, model));
   }
@@ -365,6 +377,9 @@ function createLLM(settings, { forceTier } = {}) {
   if (provider === 'gemini' && DEAD_GEMINI_MODEL_RE.test(model || '')) {
     model = CURRENT_GEMINI_DEFAULT;
   }
+  if (DEAD_DEEPSEEK_MODEL_RE.test(model || '')) {
+    model = CURRENT_DEEPSEEK_DEFAULT;
+  }
   if (!model) model = DEFAULT_MODELS[provider] || '';
   const minimaxRegion = settings.minimaxRegion || 'global_en';
   const endpoint = settings.azureEndpoint || '';
@@ -399,7 +414,7 @@ function createLLM(settings, { forceTier } = {}) {
     configurationError,
     async stream(params) {
       if (!ready) throw new Error(configurationError || `Complete the ${provider} provider settings.`);
-      const args = { apiKey, baseURL, endpoint, model, maxTokens, ...params, turns: sanitizeTurns(params.turns) };
+      const args = { apiKey, baseURL, endpoint, model, maxTokens, thinkingEnabled: tier === 'smart', ...params, turns: sanitizeTurns(params.turns) };
       try {
         if (provider === 'openai') return await streamOpenAI(args);
         if (provider === CUSTOM_PROVIDER) return await streamOpenAI(args);
@@ -417,4 +432,4 @@ function createLLM(settings, { forceTier } = {}) {
   };
 }
 
-module.exports = { modelSupportsVision, createLLM, formatProviderErrorMessage, isQuotaError, CURRENT_GEMINI_DEFAULT };
+module.exports = { modelSupportsVision, createLLM, formatProviderErrorMessage, isQuotaError, CURRENT_GEMINI_DEFAULT, CURRENT_DEEPSEEK_DEFAULT };

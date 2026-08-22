@@ -5,6 +5,7 @@ const { OPTIONAL_API_KEY_PLACEHOLDER } = require('../src/openai-compatible');
 
 let capturedClientOptions = null;
 let capturedCompletionRequest = null;
+let mockStreamParts = [{ choices: [{ delta: { content: 'ok' } }] }];
 const originalModuleLoad = Module._load;
 
 Module._load = function loadWithOpenAIStub(request, parent, isMain) {
@@ -16,7 +17,7 @@ Module._load = function loadWithOpenAIStub(request, parent, isMain) {
           completions: {
             create: async (completionRequest) => {
               capturedCompletionRequest = completionRequest;
-              return [{ choices: [{ delta: { content: 'ok' } }] }];
+              return mockStreamParts;
             }
           }
         };
@@ -26,7 +27,7 @@ Module._load = function loadWithOpenAIStub(request, parent, isMain) {
   return originalModuleLoad.call(this, request, parent, isMain);
 };
 
-const { createLLM, formatProviderErrorMessage, isQuotaError, CURRENT_GEMINI_DEFAULT } = require('../src/llm');
+const { createLLM, formatProviderErrorMessage, isQuotaError, CURRENT_GEMINI_DEFAULT, CURRENT_DEEPSEEK_DEFAULT } = require('../src/llm');
 
 test.after(() => {
   Module._load = originalModuleLoad;
@@ -46,6 +47,7 @@ function createCustomSettings(overrides = {}) {
 test.beforeEach(() => {
   capturedClientOptions = null;
   capturedCompletionRequest = null;
+  mockStreamParts = [{ choices: [{ delta: { content: 'ok' } }] }];
 });
 
 test('routes the Custom provider through the configured OpenAI-compatible endpoint', async () => {
@@ -106,6 +108,49 @@ test('requires a model for the Custom provider', () => {
 
   assert.equal(llm.ready, false);
   assert.match(llm.configurationError, /Set a Fast or Smart model/);
+});
+
+function deepseekSettings(overrides = {}) {
+  return createCustomSettings({
+    baseUrl: 'https://api.deepseek.com/v1',
+    models: { custom: { fast: CURRENT_DEEPSEEK_DEFAULT, smart: CURRENT_DEEPSEEK_DEFAULT } },
+    ...overrides
+  });
+}
+
+test('DeepSeek fast streams visible content, activity-only reasoning, and disabled thinking', async () => {
+  mockStreamParts = [
+    { choices: [{ delta: { reasoning_content: 'private reasoning' } }] },
+    { choices: [{ delta: { content: 'visible answer' } }] },
+  ];
+  const tokens = [];
+  let activities = 0;
+  const llm = createLLM(deepseekSettings());
+  const reply = await llm.stream({
+    system: 's', turns: [{ role: 'user', text: 'hi' }], mode: 'ask',
+    onToken: (token) => tokens.push(token), onActivity: () => { activities += 1; }
+  });
+
+  assert.deepEqual(capturedCompletionRequest.thinking, { type: 'disabled' });
+  assert.equal(capturedCompletionRequest.temperature, 1);
+  assert.equal(reply, 'visible answer');
+  assert.deepEqual(tokens, ['visible answer']);
+  assert.equal(activities, 1);
+});
+
+test('DeepSeek smart enables thinking without sending temperature', async () => {
+  const llm = createLLM(deepseekSettings({ smart: true }));
+  await llm.stream({ system: 's', turns: [{ role: 'user', text: 'hi' }], onToken: () => {} });
+
+  assert.deepEqual(capturedCompletionRequest.thinking, { type: 'enabled' });
+  assert.equal(Object.hasOwn(capturedCompletionRequest, 'temperature'), false);
+});
+
+test('DeepSeek LeetCode fast calls use temperature zero', async () => {
+  const llm = createLLM(deepseekSettings());
+  await llm.stream({ system: 's', turns: [{ role: 'user', text: 'hi' }], mode: 'leetcode', onToken: () => {} });
+
+  assert.equal(capturedCompletionRequest.temperature, 0);
 });
 
 // ---- MiniMax (PR #22) -----------------------------------------------------
@@ -280,4 +325,13 @@ test('createLLM: leaves a user-chosen current Gemini model alone', () => {
     models: { gemini: { fast: 'gemini-3.5-flash', smart: 'gemini-3.5-flash' } }
   }));
   assert.equal(llm.model, 'gemini-3.5-flash');
+});
+
+test('createLLM: self-heals retired DeepSeek aliases when reading saved models', () => {
+  const llm = createLLM(deepseekSettings({
+    smart: true,
+    models: { custom: { fast: 'deepseek-chat', smart: 'deepseek-reasoner' } }
+  }));
+
+  assert.equal(llm.model, CURRENT_DEEPSEEK_DEFAULT);
 });

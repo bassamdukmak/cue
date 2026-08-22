@@ -1,6 +1,11 @@
 const test = require('node:test');
 const assert = require('node:assert/strict');
 const { MODES } = require('../src/prompts');
+const { ATTACK_MODES } = require('../src/attack-prompts');
+const { NEGOTIATION_MODES } = require('../src/negotiation-prompts');
+const { DECODE_MODES } = require('../src/decode-prompts');
+const { STANDUP_MODES } = require('../src/standup-prompts');
+const { NORMAL_MODES } = require('../src/normal-prompts');
 
 test('assist mode gives a direct answer in first person', () => {
   const system = MODES.assist.buildSystem(null);
@@ -33,6 +38,25 @@ test('all modes have a build function', () => {
   for (const [name, mode] of Object.entries(MODES)) {
     assert.equal(typeof mode.build, 'function', `${name}.build must be a function`);
     assert.equal(typeof mode.buildSystem, 'function', `${name}.buildSystem must be a function`);
+  }
+});
+
+test('every mode declares its own SAY-line contract without multi-line contradictions', () => {
+  const tables = [MODES, ATTACK_MODES, NEGOTIATION_MODES, DECODE_MODES, STANDUP_MODES, NORMAL_MODES];
+  for (const table of tables) {
+    for (const [name, mode] of Object.entries(table)) {
+      assert.match(mode.buildSystem(null), /SAY-line contract:/, `${name} must declare its SAY-line count`);
+    }
+  }
+
+  const multiple = [
+    [MODES.followup, '2–4'], [ATTACK_MODES.probe, '0–3'], [NEGOTIATION_MODES.press, 'exactly 3'],
+    [DECODE_MODES.askSmart, 'exactly 2'], [STANDUP_MODES.clarify, '1–3'], [NORMAL_MODES.questions, '1–3'],
+  ];
+  for (const [mode, contract] of multiple) {
+    const prompt = mode.buildSystem(null);
+    assert.match(prompt, new RegExp(`SAY-line contract: ${contract}`));
+    assert.doesNotMatch(prompt, /exactly one SAY/i);
   }
 });
 

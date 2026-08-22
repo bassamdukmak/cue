@@ -806,7 +806,9 @@ async function runFeature(mode, userText) {
           system,
           turns: [{ role: 'user', text: built }],
           imageDataUrl,
+          mode,
           onToken: (t) => { if (streamSettled) return; rearm(); send('llm:token', { text: t }); },
+          onActivity: () => { if (!streamSettled) rearm(); },
           onUsage: recordUsage
         }),
         stalled
