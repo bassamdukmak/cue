@@ -136,6 +136,52 @@ test('new key-free parsers shape fixtures and reject malformed data', () => {
   }
 });
 
+test('ten new key-free parsers shape fixtures and reject malformed data', () => {
+  const parsers = [
+    [_internals.gdeltResult, { title: 'News item', url: 'https://news.test/item', seendate: '20260822' }, 'GDELT'],
+    [_internals.openMeteoResult, { current: { temperature_2m: 20, precipitation: 0, wind_speed_10m: 4 }, latitude: 43, longitude: -79 }, 'Open-Meteo'],
+    [_internals.restCountriesResult, { name: { common: 'Canada' }, capital: ['Ottawa'], population: 1 }, 'REST Countries'],
+    [_internals.nominatimResult, { display_name: 'Toronto, Canada', lat: '43.7', lon: '-79.4' }, 'OpenStreetMap Nominatim'],
+    [_internals.coinGeckoResult, { bitcoin: { usd: 100, usd_market_cap: 1000 } }, 'CoinGecko', 'bitcoin'],
+    [_internals.frankfurterResult, { rates: { CAD: 1.5 }, date: '2026-08-22' }, 'Frankfurter', 'USD', 'CAD'],
+    [_internals.usgsResult, { properties: { title: 'M 4.0 - Test', url: 'https://usgs.test/event' } }, 'USGS Earthquake'],
+    [_internals.openLibraryResult, { title: 'A Book', author_name: ['An Author'], key: '/works/OL1W' }, 'Open Library'],
+    [_internals.waybackResult, { archived_snapshots: { closest: { available: true, url: 'https://web.archive.org/test' } } }, 'Wayback Machine'],
+    [_internals.hackerNewsResult, { title: 'A launch', url: 'https://news.ycombinator.com/item?id=1' }, 'Hacker News'],
+  ];
+  for (const [parser, fixture, source, ...args] of parsers) {
+    assert.equal(parser(fixture, ...args).source, source);
+    assert.equal(parser({}, ...args), null);
+  }
+  assert.equal(_internals.nominatimDistanceResult({ display_name: 'A', lat: '0', lon: '0' }, { display_name: 'B', lat: '0', lon: '1' }).source, 'OpenStreetMap Nominatim');
+  assert.equal(_internals.nominatimDistanceResult({}, {}), null);
+});
+
+test('new key-free routes select their specialist source first', async () => {
+  const cases = [
+    ['Did the launch happen recently?', 'api.gdeltproject.org', 'GDELT', (url) => ({ articles: [{ title: 'Recent launch', url: 'https://news.test' }] })],
+    ['weather in Toronto', 'geocoding-api.open-meteo.com', 'Open-Meteo', (url) => String(url).includes('geocoding-api') ? { results: [{ name: 'Toronto', latitude: 43.7, longitude: -79.4 }] } : { current: { temperature_2m: 20 }, latitude: 43.7, longitude: -79.4 }],
+    ['Canada capital and currency', 'restcountries.com', 'REST Countries', () => [{ name: { common: 'Canada' }, capital: ['Ottawa'], currencies: { CAD: { name: 'Canadian dollar' } } }]],
+    ['where is Toronto?', 'nominatim.openstreetmap.org', 'OpenStreetMap Nominatim', () => [{ display_name: 'Toronto, Canada', lat: '43.7', lon: '-79.4' }]],
+    ['bitcoin market cap', 'api.coingecko.com', 'CoinGecko', () => ({ bitcoin: { usd: 100, usd_market_cap: 1000 } })],
+    ['USD to CAD exchange rate', 'api.frankfurter.app', 'Frankfurter', () => ({ rates: { CAD: 1.5 }, date: '2026-08-22' })],
+    ['recent earthquake magnitude 4', 'earthquake.usgs.gov', 'USGS Earthquake', () => ({ features: [{ properties: { title: 'M 4.0 - Test', url: 'https://usgs.test/event' } }] })],
+    ['book ISBN for Dune', 'openlibrary.org', 'Open Library', () => ({ docs: [{ title: 'Dune', key: '/works/OL1W' }] })],
+    ['their site used to say this: https://example.test on 2020-01-01', 'archive.org', 'Wayback Machine', () => ({ archived_snapshots: { closest: { available: true, url: 'https://web.archive.org/test' } } })],
+    ['tech industry product launch', 'hn.algolia.com', 'Hacker News', () => ({ hits: [{ title: 'Launch', url: 'https://news.ycombinator.com/item?id=1' }] })],
+  ];
+  for (const [query, host, source, body] of cases) {
+    const calls = [];
+    const result = await searchFacts(query, { fetchImpl: async (url, options = {}) => {
+      calls.push({ url: String(url), options });
+      return { ok: true, json: async () => body(url) };
+    } });
+    assert.equal(result.source, source);
+    assert.match(calls[0].url, new RegExp(host.replace(/\./g, '\\.')));
+    if (source === 'OpenStreetMap Nominatim') assert.match(calls[0].options.headers['User-Agent'], /cue-meeting-assistant/);
+  }
+});
+
 test('key-free routing selects the first specialist source for each claim type', async () => {
   const cases = [
     ['A study showed sleep helps memory', 'api.openalex.org', { results: [{ title: 'Sleep study', id: 'https://openalex.org/W1' }] }, 'OpenAlex'],

@@ -12,7 +12,7 @@ function buildSearchFactsTool(settings) {
   type: 'function',
   function: {
     name: 'search_facts',
-    description: `Verify a specific factual claim before answering. Always available with no configuration: Wikipedia, Wikidata, SEC EDGAR, Federal Register, OpenAlex, Crossref, arXiv, PubMed, and World Bank. Live sources currently available: ${sources}. Prefer SEC EDGAR for filings, Federal Register for regulations, OpenAlex for research, PubMed for health, World Bank for country statistics, and Wikidata for a single hard fact. The result always names its source for citation.`,
+    description: `Verify a specific factual claim before answering. Always available with no configuration: Wikipedia, Wikidata, SEC EDGAR, Federal Register, OpenAlex, Crossref, arXiv, PubMed, World Bank, GDELT, Open-Meteo, REST Countries, OpenStreetMap Nominatim, CoinGecko, Frankfurter, USGS Earthquake, Open Library, Wayback Machine, and Hacker News. Live sources currently available: ${sources}. Prefer GDELT for recent news, Open-Meteo for weather, REST Countries for country facts, Nominatim for places, CoinGecko for crypto, Frankfurter for exchange rates, USGS for earthquakes, Open Library for books, Wayback for historical pages, and Hacker News for tech claims. The result always names its source for citation.`,
     parameters: {
       type: 'object',
       properties: { query: { type: 'string', description: 'The specific factual claim to verify.' } },
