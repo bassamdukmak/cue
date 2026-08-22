@@ -32,8 +32,19 @@ mkdir -p dist && touch dist/.metadata_never_index
 # which enables it only when a real certificate exists. Ad-hoc + hardened runtime
 # makes macOS pin Screen Recording to the exact code hash, so the grant dies on
 # every rebuild while still showing as ticked in System Settings.
-echo "==> Signing (ad-hoc, no hardened runtime)"
-codesign --force --deep --sign - \
+# Sign with a stable local identity when one exists, falling back to ad-hoc.
+# This is what stops the permission treadmill: macOS ties Screen Recording and
+# Microphone grants to the signing identity, so an ad-hoc signature (which
+# changes on every build) silently invalidated them each time. A fixed identity
+# keeps the grants across rebuilds.
+SIGN_ID="cue-dev-signing"
+if security find-identity -p codesigning -v 2>/dev/null | grep -q "$SIGN_ID"; then
+  echo "==> Signing with stable identity: $SIGN_ID"
+else
+  echo "==> No '$SIGN_ID' identity found — falling back to ad-hoc (permissions will reset)"
+  SIGN_ID="-"
+fi
+codesign --force --deep --sign "$SIGN_ID" \
   --identifier com.cue.overlay \
   --entitlements build-resources/entitlements.mac.plist \
   dist/mac-arm64/cue.app
