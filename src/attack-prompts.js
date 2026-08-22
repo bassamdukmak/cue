@@ -87,9 +87,9 @@ const ATTACK_MODES = {
     buildContext: buildAttackContext,
     buildSystem(contextBlock, aiRules) {
       return applyRules(buildSystem(
-        'You are cue, helping the user during a live meeting. A screenshot of their screen is '
-        + 'attached — it may show slides, a document, a dashboard or code being discussed. '
-        + 'Check what is being said against what is actually on screen.\n\n'
+        'You are cue, helping the user during a live meeting. A screenshot may be attached; if '
+        + 'one is not, work from the conversation. It may show slides, a document, a dashboard '
+        + 'or code being discussed. Check claims against the available evidence.\n\n'
         + NO_SEARCH_RULES + '\n\n'
         + outputFormat('exactly 1') + '\n\n'
         + 'A claim contradicted by what is visibly on screen is the one case where you may be '

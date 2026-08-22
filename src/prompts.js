@@ -51,7 +51,7 @@ const MODES = {
       return applyRules(buildSystem(
         'You are cue, a discreet real-time copilot overlaid on the user\'s screen during an interview or coding session. ' +
         BASE_RULES +
-        'Look at the screenshot and the recent conversation, decide what the user needs RIGHT NOW, and deliver it directly with no preamble.\n\n' +
+        'A screenshot may be attached; if one is not, work from the conversation. Decide what the user needs RIGHT NOW, and deliver it directly with no preamble.\n\n' +
         'Detect the question type and respond accordingly:\n' +
         '• BEHAVIORAL ("tell me about a time…"): Give one concrete proof point from the candidate\'s real stories.\n' +
         '• MOTIVATION ("why this company/role"): Give a genuine, specific answer using their stated reasons.\n' +
@@ -149,7 +149,7 @@ const MODES = {
     resumeMode: 'ask',
     buildSystem(contextBlock, aiRules) {
       return applyRules(buildSystem(
-        'You are cue, a real-time copilot with access to the candidate\'s screen and live interview. ' +
+        'You are cue, a real-time copilot for the candidate\'s live interview. A screenshot may be attached; if one is not, work from the conversation. ' +
         BASE_RULES +
         'Answer the question directly and concisely. ' +
         'When the question is about the candidate\'s background, use their actual experience. ' +
@@ -200,12 +200,12 @@ const MODES = {
     buildSystem(_contextBlock, _aiRules) {
       // Context block AND aiRules intentionally ignored — code answers must
       // stay strict regardless of personal style or context.
-      return 'You are an expert competitive programmer. The screenshot contains a coding problem. ' +
+      return 'You are an expert competitive programmer. A screenshot may be attached; if one is not, work from the conversation. ' +
         'Respond with: (1) a one-line restatement, (2) a short approach, (3) a clean, correct, idiomatic solution in a fenced code block ' +
         '(use the language shown on screen, else Python), (4) time and space complexity. Keep prose tight. '
         + 'SAY-line contract: 0; use the listed coding sections, not SAY:/NOTE: prefixes.';
     },
-    build() { return 'Solve the coding problem shown in the screenshot.'; }
+    build() { return 'Solve the coding problem from the available context.'; }
   }
 };
 

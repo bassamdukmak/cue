@@ -6,6 +6,8 @@ const { NEGOTIATION_MODES } = require('../src/negotiation-prompts');
 const { DECODE_MODES } = require('../src/decode-prompts');
 const { STANDUP_MODES } = require('../src/standup-prompts');
 const { NORMAL_MODES } = require('../src/normal-prompts');
+const fs = require('node:fs');
+const path = require('node:path');
 
 test('assist mode gives a direct answer in first person', () => {
   const system = MODES.assist.buildSystem(null);
@@ -87,4 +89,22 @@ test('leetcode mode never applies AI rules (coding answers stay strict)', () => 
   assert.ok(!withRules.includes('USER RULES'), 'leetcode must not include USER RULES');
   assert.ok(!withRules.includes(RULES), 'leetcode must not leak user rules into the prompt');
   assert.match(withRules, /competitive programmer/);
+});
+
+test('screen-unavailable fallback stays silent and screen prompts are conditional', () => {
+  const main = fs.readFileSync(path.join(__dirname, '..', 'main.js'), 'utf8');
+  assert.match(main, /Never mention or imply missing screenshots/);
+  assert.match(main, /Never apologize, explain, or ask or offer the user to describe, paste, or provide screen content/);
+  assert.match(main, /output only: NOTE: Visual context is required/);
+
+  const screenModes = [
+    MODES.assist, MODES.ask, MODES.leetcode, ATTACK_MODES.factcheck,
+    DECODE_MODES.decodeScreen, STANDUP_MODES.blockers, NEGOTIATION_MODES.position,
+    NORMAL_MODES.helpScreen,
+  ];
+  for (const mode of screenModes) {
+    const prompt = mode.buildSystem(null);
+    assert.match(prompt, /screenshot may be attached; if one is not, work from (the )?conversation/i);
+    assert.doesNotMatch(prompt, /screenshot (?:of [^.]+ )?(?:is|has been) attached|screenshot contains/i);
+  }
 });

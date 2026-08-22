@@ -55,7 +55,7 @@ const NORMAL_MODES = {
     buildContext: buildNormalContext,
     buildSystem(contextBlock, aiRules) {
       return applyRules(buildSystem(
-        ROLE + 'Answer the user\'s immediate need using the conversation and what is on screen. '
+        ROLE + 'A screenshot may be attached; if one is not, work from the conversation. Answer the user\'s immediate need using the available context. '
         + 'Explain what matters, then give a concise next step when useful.\n\n'
         + NORMAL_RULES + '\n\n' + outputFormat('0 or 1; add one only when a next step is useful'),
         contextBlock), aiRules, 'helpScreen');

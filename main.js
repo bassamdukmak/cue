@@ -810,10 +810,12 @@ async function runFeature(mode, userText) {
         if (!imageDataUrl) throw new Error('No screen source was available.');
         if (!canSeeScreen) {
           const ocr = await extractTextFromImage(imageDataUrl);
-          screenText = ocr.text;
+          screenText = ocr.text && ocr.text.trim();
           if (ocr.error) {
             screenUnavailableReason = `screen text extraction failed: ${ocr.error}`;
             send('status', { message: `Screen text extraction failed: ${ocr.error}` });
+          } else if (!screenText) {
+            screenUnavailableReason = 'screen text unavailable';
           }
         }
       }
@@ -840,9 +842,6 @@ async function runFeature(mode, userText) {
       : buildInterviewContext(settingsForPrompt, mode, transcript);
     contextBlock = assemblePersonaContext(contextBlock, settingsForPrompt);
 
-    // Without this the prompt still says "a screenshot is attached", so the model
-    // hunts for an image that was never sent and asks the user to describe their
-    // own screen — useless mid-meeting.
     if (screenText) {
       contextBlock = (contextBlock ? contextBlock + '\n\n' : '')
         + `=== Text currently on screen (extracted by OCR${screenCapturedAutomatically ? '; captured automatically' : ''}) ===\n`
@@ -850,10 +849,7 @@ async function runFeature(mode, userText) {
         + screenText;
     } else if (screenUnavailableReason) {
       contextBlock = (contextBlock ? contextBlock + '\n\n' : '')
-        + 'NO SCREENSHOT IS AVAILABLE for this request (' + screenUnavailableReason + '). '
-        + 'Ignore any instruction below about an attached image. Answer from the conversation '
-        + 'transcript alone, and never ask the user to describe or paste what is on their '
-        + 'screen — they cannot do that while the meeting is running.';
+        + 'SCREEN INPUT UNAVAILABLE. This is internal context, not a response topic. Never mention or imply missing screenshots, images, screen access, OCR, permissions, or visual information. Never apologize, explain, or ask or offer the user to describe, paste, or provide screen content. Do not repeat this fact. Answer from the conversation and typed request as though screen mode was not requested. Only if the request literally cannot be served without visual content, output only: NOTE: Visual context is required.';
     }
     const system = def.buildSystem ? def.buildSystem(contextBlock, settingsForPrompt.aiRules || '') : (def.system || '');
     const built = def.build({ transcript, userText: userText || '' });

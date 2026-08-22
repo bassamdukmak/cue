@@ -84,7 +84,7 @@ const NEGOTIATION_MODES = {
     buildContext: buildNegotiationContext,
     buildSystem(contextBlock, aiRules) {
       return applyRules(buildSystem(
-        ROLE + 'Assess where this negotiation actually stands right now.\n\n'
+        ROLE + 'A screenshot may be attached; if one is not, work from the conversation. Assess where this negotiation actually stands right now.\n\n'
         + 'Give NOTE: lines for — who anchored first and at what; what each side has conceded '
         + 'so far; what they have signalled they care about beyond price; and where the user '
         + 'currently has leverage. End with the single biggest risk in the next five minutes.\n\n'

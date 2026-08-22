@@ -74,8 +74,8 @@ const DECODE_MODES = {
     buildContext: buildDecodeContext,
     buildSystem(contextBlock, aiRules) {
       return applyRules(buildSystem(
-        ROLE + 'A screenshot of the screen is attached — a diagram, dashboard, spreadsheet or '
-        + 'code being discussed. Explain what the user is looking at.\n\n'
+        ROLE + 'A screenshot may be attached; if one is not, work from the conversation. It may '
+        + 'show a diagram, dashboard, spreadsheet or code being discussed. Explain the available context.\n\n'
         + DECODE_RULES + '\n\n' + outputFormat('0 or 1; only ask for an internal term') + '\n\n'
         + 'Say what it IS first, then only the parts that matter. Skip decoration.',
         contextBlock), aiRules, 'decodeScreen');

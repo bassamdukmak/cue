@@ -72,7 +72,7 @@ const STANDUP_MODES = {
     buildContext: buildStandupContext,
     buildSystem(contextBlock, aiRules) {
       return applyRules(buildSystem(
-        ROLE + 'Work out what the user should raise now rather than later.\n\n'
+        ROLE + 'A screenshot may be attached; if one is not, work from the conversation. Work out what the user should raise now rather than later.\n\n'
         + 'Give NOTE: lines for anything discussed that will land on the user, any dependency '
         + 'on someone in this meeting that is easier to secure now than over chat, and anything '
         + 'they are being volunteered for without it being said outright. Then one SAY: line '
