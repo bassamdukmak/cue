@@ -1501,6 +1501,7 @@
     $('#key-finnhub').value = settings.apiKeys.finnhub || '';
     $('#key-brave').value = settings.apiKeys.brave || '';
     $('#key-tavily').value = settings.apiKeys.tavily || '';
+    $('#searxng-url').value = settings.searxngUrl || '';
     $('#azure-endpoint').value = settings.azureEndpoint || '';
     const m = settings.models[settings.provider] || { fast: '', smart: '' };
     $('#model-fast').value = m.fast; $('#model-smart').value = m.smart;
@@ -1990,6 +1991,7 @@
     settings.apiKeys.finnhub = $('#key-finnhub').value.trim();
     settings.apiKeys.brave = $('#key-brave').value.trim();
     settings.apiKeys.tavily = $('#key-tavily').value.trim();
+    settings.searxngUrl = $('#searxng-url').value.trim();
     settings.azureEndpoint = $('#azure-endpoint').value.trim();
     if (!settings.models[settings.provider]) settings.models[settings.provider] = {};
     settings.models[settings.provider].fast = $('#model-fast').value.trim();

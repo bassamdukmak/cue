@@ -1,6 +1,6 @@
 const assert = require('node:assert/strict');
 const test = require('node:test');
-const { searchFacts, _internals } = require('../src/search');
+const { searchFacts, liveSearchSources, _internals } = require('../src/search');
 
 test('Wikipedia search returns a normalized fact without using the network in tests', async () => {
   const calls = [];
@@ -117,4 +117,65 @@ test('source failures always resolve to null', async () => {
   assert.equal(await searchFacts('$AAPL revenue', { fetchImpl: fail, apiKeys: { fmp: 'key', finnhub: 'key' } }), null);
   assert.equal(await searchFacts('ordinary fact', { fetchImpl: fail, apiKeys: { brave: 'key' } }), null);
   assert.equal(await searchFacts('ordinary fact', { fetchImpl: fail, apiKeys: { tavily: 'key' } }), null);
+});
+
+test('new key-free parsers shape fixtures and reject malformed data', () => {
+  const parsers = [
+    [_internals.wikidataResult, { id: 'Q1', labels: { en: { value: 'Universe' } }, descriptions: { en: { value: 'totality of space' } } }, 'Wikidata'],
+    [_internals.openAlexResult, { title: 'A study', doi: 'https://doi.org/1', cited_by_count: 3 }, 'OpenAlex'],
+    [_internals.crossrefResult, { title: ['A paper'], DOI: '1/x' }, 'Crossref'],
+    [_internals.arxivResult, '<entry><title>A preprint</title><id>https://arxiv.org/abs/1</id><summary>Abstract</summary></entry>', 'arXiv'],
+    [_internals.pubmedResult, { title: 'Clinical result', articleids: [{ idtype: 'pubmed', value: '123' }] }, 'PubMed'],
+    [_internals.worldBankResult, { country: { value: 'Canada' }, indicator: { id: 'NY.GDP.MKTP.CD', value: 'GDP' }, value: 2, date: '2025' }, 'World Bank'],
+    [_internals.duckDuckGoResult, { AbstractText: 'Instant answer', AbstractURL: 'https://example.test' }, 'DuckDuckGo Instant Answer'],
+    [_internals.searxngResult, { content: 'Self-hosted result', url: 'https://example.test' }, 'SearXNG'],
+  ];
+  for (const [parser, fixture, source] of parsers) {
+    assert.equal(parser(fixture).source, source);
+    assert.equal(parser(parser === _internals.arxivResult ? '' : {}), null);
+  }
+});
+
+test('key-free routing selects the first specialist source for each claim type', async () => {
+  const cases = [
+    ['A study showed sleep helps memory', 'api.openalex.org', { results: [{ title: 'Sleep study', id: 'https://openalex.org/W1' }] }, 'OpenAlex'],
+    ['What medical treatment helps asthma?', 'eutils.ncbi.nlm.nih.gov', { esearchresult: { idlist: ['1'] } }, 'PubMed'],
+    ['Canada GDP', 'api.worldbank.org', [{}, [{ country: { value: 'Canada' }, indicator: { id: 'NY.GDP.MKTP.CD', value: 'GDP' }, value: 2, date: '2025' }]], 'World Bank'],
+    ['Who is Ada Lovelace?', 'www.wikidata.org', { search: [{ id: 'Q7259' }] }, 'Wikidata'],
+  ];
+  for (const [query, host, body, source] of cases) {
+    const calls = [];
+    const result = await searchFacts(query, { fetchImpl: async (url) => {
+      calls.push(String(url));
+      if (String(url).includes('esummary')) return { ok: true, json: async () => ({ result: { 1: { title: 'Asthma result', articleids: [{ idtype: 'pubmed', value: '1' }] } } }) };
+      if (String(url).includes('wbgetentities')) return { ok: true, json: async () => ({ entities: { Q7259: { id: 'Q7259', labels: { en: { value: 'Ada Lovelace' } } } } }) };
+      return { ok: true, json: async () => body };
+    } });
+    assert.equal(result.source, source);
+    assert.match(calls[0], new RegExp(host.replace(/\./g, '\\.')));
+  }
+});
+
+test('DuckDuckGo follows Wikipedia and SearXNG is skipped unless configured', async () => {
+  const calls = [];
+  await searchFacts('ordinary fact', { fetchImpl: async (url) => {
+    calls.push(String(url));
+    if (String(url).includes('wikipedia.org')) return { ok: true, json: async () => ({}) };
+    return { ok: true, json: async () => ({ AbstractText: 'Instant answer' }) };
+  } });
+  assert.match(calls[0], /wikipedia\.org/);
+  assert.ok(calls.some((url) => url.includes('duckduckgo.com')));
+  assert.ok(calls.every((url) => !url.includes('/search?')));
+  assert.equal(liveSearchSources({}, '').includes('SearXNG'), false);
+});
+
+test('configured SearXNG is used only after Wikipedia fails', async () => {
+  const calls = [];
+  const result = await searchFacts('ordinary fact', { searxngUrl: 'http://localhost:8080', fetchImpl: async (url) => {
+    calls.push(String(url));
+    return { ok: true, json: async () => String(url).includes('localhost:8080') ? { results: [{ content: 'Local result', url: 'https://example.test' }] } : {} };
+  } });
+  assert.equal(result.source, 'SearXNG');
+  assert.match(calls[0], /wikipedia\.org/);
+  assert.match(calls[1], /localhost:8080/);
 });

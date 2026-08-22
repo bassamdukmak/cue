@@ -23,6 +23,7 @@ const DEFAULTS = {
   // live assistant that stalls waiting for a click is worse than one that never
   // searches. Opt in from Settings > Meeting.
   searchMode: 'off',
+  searxngUrl: '',
   baseUrl: '',
   minimaxRegion: 'global_en',
   apiKeys: { openai: '', anthropic: '', gemini: '', deepgram: '', custom: '', ollama: '', groq: '', minimax: '' , azure: '', fmp: '', finnhub: '', brave: '', tavily: '' },

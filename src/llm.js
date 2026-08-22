@@ -5,13 +5,14 @@ const { createCompatibleClientOptions } = require('./openai-compatible');
 const { getConfiguredSources } = require('./search');
 
 const CUSTOM_PROVIDER = 'custom';
-function buildSearchFactsTool(apiKeys) {
-  const sources = getConfiguredSources(apiKeys).join(', ');
+function buildSearchFactsTool(settings) {
+  const apiKeys = settings?.apiKeys || settings || {};
+  const sources = getConfiguredSources(apiKeys, settings?.searxngUrl).join(', ');
   return {
   type: 'function',
   function: {
     name: 'search_facts',
-    description: `Verify a specific factual claim before answering. Sources currently configured: ${sources}. Prefer SEC EDGAR for filings, Federal Register for regulations, and FMP calendars for forward events. The result always names its source for citation.`,
+    description: `Verify a specific factual claim before answering. Always available with no configuration: Wikipedia, Wikidata, SEC EDGAR, Federal Register, OpenAlex, Crossref, arXiv, PubMed, and World Bank. Live sources currently available: ${sources}. Prefer SEC EDGAR for filings, Federal Register for regulations, OpenAlex for research, PubMed for health, World Bank for country statistics, and Wikidata for a single hard fact. The result always names its source for citation.`,
     parameters: {
       type: 'object',
       properties: { query: { type: 'string', description: 'The specific factual claim to verify.' } },
@@ -528,7 +529,7 @@ function createLLM(settings, { forceTier } = {}) {
     configurationError,
     async stream(params) {
       if (!ready) throw new Error(configurationError || `Complete the ${provider} provider settings.`);
-      const args = { apiKey, baseURL, endpoint, model, maxTokens, thinkingEnabled: tier === 'smart', ...params, searchTool: params.onToolCall ? buildSearchFactsTool(keys) : null, turns: sanitizeTurns(params.turns) };
+      const args = { apiKey, baseURL, endpoint, model, maxTokens, thinkingEnabled: tier === 'smart', ...params, searchTool: params.onToolCall ? buildSearchFactsTool(settings) : null, turns: sanitizeTurns(params.turns) };
       try {
         if (provider === 'openai') return await streamOpenAI(args);
         if (provider === CUSTOM_PROVIDER) return await streamOpenAI(args);

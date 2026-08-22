@@ -163,13 +163,13 @@ function requestSearchPermission(query, onActivity, sources) {
 async function handleSearchToolCall(query, onActivity) {
   const settings = store.getSettings();
   const mode = settings.searchMode || 'ask';
-  const sources = getConfiguredSources(settings.apiKeys).join(' + ');
+  const sources = getConfiguredSources(settings.apiKeys, settings.searxngUrl).join(' + ');
   if (mode === 'off') return { denied: true, message: 'Web search is disabled. Answer from memory and state uncertainty.' };
   if (mode === 'ask' && !(await requestSearchPermission(query, onActivity, sources))) {
     return { denied: true, message: 'The user denied this web search. Answer from memory and state uncertainty.' };
   }
   if (mode === 'auto') send('status', { message: `searching: ${query}`, muted: true });
-  const result = await searchFacts(query, { apiKeys: settings.apiKeys });
+  const result = await searchFacts(query, { apiKeys: settings.apiKeys, searxngUrl: settings.searxngUrl });
   if (mode === 'auto') send('status', { message: '', muted: true });
   return result || { summary: 'No configured search source returned a result for this query.', source: 'No source', url: null };
 }

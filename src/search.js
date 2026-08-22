@@ -4,6 +4,12 @@ const SEC_TICKERS = 'https://www.sec.gov/files/company_tickers.json';
 const SEC_SUBMISSIONS = 'https://data.sec.gov/submissions/CIK';
 const FEDERAL_REGISTER = 'https://www.federalregister.gov/api/v1/documents.json';
 const FMP_BASE = 'https://financialmodelingprep.com/stable/';
+const WIKIDATA_API = 'https://www.wikidata.org/w/api.php';
+const OPENALEX_WORKS = 'https://api.openalex.org/works';
+const ARXIV_API = 'http://export.arxiv.org/api/query';
+const CROSSREF_WORKS = 'https://api.crossref.org/works';
+const PUBMED_API = 'https://eutils.ncbi.nlm.nih.gov/entrez/eutils/';
+const WORLD_BANK_API = 'https://api.worldbank.org/v2/country/';
 let tickerCache = null;
 
 function classify(query) {
@@ -12,7 +18,27 @@ function classify(query) {
   if (/\b(next week|next month|tomorrow|monday|tuesday|wednesday|thursday|friday|reports? (?:on|next|this)|earnings|cpi|fomc|fed meets?|economic (?:release|event))\b/i.test(query)) return 'event';
   if (/\b(revenue|earnings per share|eps|market cap|stock price|financial metric|margin|guidance|company profile|cash flow|balance sheet|income statement|news|headlines)\b/i.test(query)
     || /^(?:\$)?[A-Z]{1,5}$/.test(String(query).trim())) return 'metric';
+  if (/\b(doctor|medical|medicine|health|disease|patient|clinical|drug|treatment|therapy|diagnosis|vaccine|cancer)\b/i.test(query)) return 'medical';
+  if (/\b(study|studies|research|paper|journal|citation|citations|doi|published)\b/i.test(query)) return 'research';
+  if (countryCode(query) && /\b(gdp|gross domestic product|unemployment|inflation|economic growth|gdp growth|population)\b/i.test(query)) return 'country';
+  if (/\b(who is|when was|founder|founded|founding|population|parent company|date of birth|office holder)\b/i.test(query)) return 'fact';
   return 'general';
+}
+
+function countryCode(query) {
+  const text = String(query || '').toLowerCase();
+  const countries = { argentina: 'ARG', australia: 'AUS', brazil: 'BRA', canada: 'CAN', china: 'CHN', france: 'FRA', germany: 'DEU', india: 'IND', indonesia: 'IDN', italy: 'ITA', japan: 'JPN', mexico: 'MEX', nigeria: 'NGA', pakistan: 'PAK', russia: 'RUS', 'south africa': 'ZAF', 'south korea': 'KOR', spain: 'ESP', turkey: 'TUR', uk: 'GBR', 'united kingdom': 'GBR', 'united states': 'USA', usa: 'USA' };
+  return Object.entries(countries).find(([name]) => new RegExp('\\b' + name + '\\b', 'i').test(text))?.[1]
+    || (/\bUS\b/.test(String(query || '')) ? 'USA' : null)
+    || /\b([A-Z]{3})\b/.exec(String(query || ''))?.[1] || null;
+}
+
+function worldBankIndicator(query) {
+  if (/unemployment/i.test(query)) return 'SL.UEM.TOTL.ZS';
+  if (/inflation/i.test(query)) return 'FP.CPI.TOTL.ZG';
+  if (/economic growth|gdp growth/i.test(query)) return 'NY.GDP.MKTP.KD.ZG';
+  if (/population/i.test(query)) return 'SP.POP.TOTL';
+  return 'NY.GDP.MKTP.CD';
 }
 
 function tickerFrom(query, tickers) {
@@ -41,6 +67,83 @@ async function wikipedia(query, options) {
   if (!title) return null;
   const page = await json(options.fetchImpl, WIKIPEDIA_SUMMARY + encodeURIComponent(title.replace(/ /g, '_')), options);
   return page?.extract ? { summary: page.extract, source: 'Wikipedia', url: page.content_urls?.desktop?.page || `https://en.wikipedia.org/wiki/${encodeURIComponent(title.replace(/ /g, '_'))}` } : null;
+}
+
+function wikidataResult(entity) {
+  if (!entity?.labels?.en?.value) return null;
+  const values = entity.claims || {};
+  const value = (property) => values[property]?.[0]?.mainsnak?.datavalue?.value;
+  const date = value('P571')?.time?.slice(1, 11);
+  const population = value('P1082')?.amount;
+  const facts = [date && 'founded ' + date, population && 'population ' + population].filter(Boolean);
+  return { summary: [entity.labels.en.value, entity.descriptions?.en?.value, ...facts].filter(Boolean).join(' — '), source: 'Wikidata', url: 'https://www.wikidata.org/wiki/' + entity.id };
+}
+async function wikidata(query, options) {
+  const url = new URL(WIKIDATA_API);
+  url.search = new URLSearchParams({ action: 'wbsearchentities', search: query, language: 'en', format: 'json', origin: '*' });
+  const id = (await json(options.fetchImpl, url, options))?.search?.[0]?.id;
+  if (!id) return null;
+  const entityUrl = new URL(WIKIDATA_API);
+  entityUrl.search = new URLSearchParams({ action: 'wbgetentities', ids: id, languages: 'en', format: 'json', origin: '*' });
+  return wikidataResult((await json(options.fetchImpl, entityUrl, options))?.entities?.[id]);
+}
+
+function openAlexResult(work) {
+  if (!work?.title) return null;
+  const cited = work.cited_by_count != null ? ' Cited ' + work.cited_by_count + ' times.' : '';
+  return { summary: work.title + (work.publication_date ? ' (' + work.publication_date + ')' : '') + '.' + cited, source: 'OpenAlex', url: work.doi || work.id || null };
+}
+async function openAlex(query, options) {
+  const url = new URL(OPENALEX_WORKS);
+  url.search = new URLSearchParams({ search: query, per_page: '1', mailto: 'cue@localhost' });
+  return openAlexResult((await json(options.fetchImpl, url, options))?.results?.[0]);
+}
+
+function crossrefResult(work) {
+  if (!work?.title?.[0]) return null;
+  const published = work.published?.['date-parts']?.[0]?.join('-');
+  return { summary: work.title[0] + (published ? ' (' + published + ')' : '') + '.', source: 'Crossref', url: work.URL || (work.DOI && 'https://doi.org/' + work.DOI) || null };
+}
+async function crossref(query, options) {
+  const url = new URL(CROSSREF_WORKS); url.search = new URLSearchParams({ query, rows: '1' });
+  return crossrefResult((await json(options.fetchImpl, url, options))?.message?.items?.[0]);
+}
+
+function xmlText(xml, tag) { return new RegExp('<' + tag + '[^>]*>([\\s\\S]*?)<\\/' + tag + '>', 'i').exec(xml)?.[1]?.replace(/<[^>]+>/g, '').replace(/\s+/g, ' ').trim() || ''; }
+function arxivResult(xml) {
+  const title = xmlText(xml, 'title'), id = xmlText(xml, 'id'), summary = xmlText(xml, 'summary');
+  return title && id ? { summary: title + (summary ? ' — ' + summary : ''), source: 'arXiv', url: id } : null;
+}
+async function arxiv(query, options) {
+  const url = new URL(ARXIV_API); url.search = new URLSearchParams({ search_query: 'all:' + query, start: '0', max_results: '1' });
+  const controller = new AbortController(), timer = setTimeout(() => controller.abort(), options.timeoutMs);
+  try {
+    const response = await options.fetchImpl(url, { signal: controller.signal });
+    return response.ok ? arxivResult(await response.text()) : null;
+  } catch (_) { return null; } finally { clearTimeout(timer); }
+}
+
+function pubmedResult(record) {
+  if (!record?.title) return null;
+  const id = record.articleids?.find((item) => item.idtype === 'pubmed')?.value;
+  return { summary: record.title + (record.pubdate ? ' (' + record.pubdate + ')' : '') + '.', source: 'PubMed', url: id ? 'https://pubmed.ncbi.nlm.nih.gov/' + id + '/' : null };
+}
+async function pubmed(query, options) {
+  const searchUrl = new URL(PUBMED_API + 'esearch.fcgi'); searchUrl.search = new URLSearchParams({ db: 'pubmed', term: query, retmax: '1', retmode: 'json' });
+  const id = (await json(options.fetchImpl, searchUrl, options))?.esearchresult?.idlist?.[0];
+  if (!id) return null;
+  const summaryUrl = new URL(PUBMED_API + 'esummary.fcgi'); summaryUrl.search = new URLSearchParams({ db: 'pubmed', id, retmode: 'json' });
+  return pubmedResult((await json(options.fetchImpl, summaryUrl, options))?.result?.[id]);
+}
+
+function worldBankResult(row) {
+  if (row?.value == null) return null;
+  return { summary: (row.country?.value || 'Country') + ' ' + (row.indicator?.value || 'indicator') + ': ' + row.value + ' (' + row.date + ').', source: 'World Bank', url: 'https://data.worldbank.org/indicator/' + (row.indicator?.id || '') };
+}
+async function worldBank(query, options) {
+  const country = countryCode(query); if (!country) return null;
+  const url = new URL(WORLD_BANK_API + country + '/indicator/' + worldBankIndicator(query)); url.search = new URLSearchParams({ format: 'json', per_page: '1' });
+  return worldBankResult((await json(options.fetchImpl, url, options))?.[1]?.[0]);
 }
 
 async function edgar(query, options) {
@@ -115,16 +218,42 @@ async function tavily(query, options) {
   const row = payload?.results?.[0]; return row?.content ? { summary: row.content, source: 'Tavily', url: row.url } : null;
 }
 
-function liveSearchSources(apiKeys = {}) { return ['Wikipedia', 'SEC EDGAR', 'Federal Register', ...(apiKeys.fmp ? ['FMP'] : []), ...(apiKeys.finnhub ? ['Finnhub'] : []), ...(apiKeys.brave ? ['Brave'] : []), ...(apiKeys.tavily ? ['Tavily'] : [])]; }
-async function searchFacts(query, { fetchImpl = fetch, timeoutMs = 5000, apiKeys = {} } = {}) {
+function searxngResult(row) {
+  if (!row?.content && !row?.title) return null;
+  return { summary: row.content || row.title, source: 'SearXNG', url: row.url || null };
+}
+async function searxng(query, options) {
+  if (!options.searxngUrl) return null;
+  const url = new URL(options.searxngUrl.replace(/\/+$/, '') + '/search');
+  url.search = new URLSearchParams({ q: query, format: 'json' });
+  return searxngResult((await json(options.fetchImpl, url, options))?.results?.[0]);
+}
+
+// Instant answers only, never web results; keep this as the final fallback.
+function duckDuckGoResult(body) {
+  const row = body?.RelatedTopics?.find((item) => item?.Text) || body?.RelatedTopics?.flatMap((item) => item?.Topics || []).find((item) => item?.Text);
+  const summary = body?.AbstractText || row?.Text;
+  return summary ? { summary, source: 'DuckDuckGo Instant Answer', url: body?.AbstractURL || row?.FirstURL || null } : null;
+}
+async function duckDuckGo(query, options) {
+  const url = new URL('https://api.duckduckgo.com/'); url.search = new URLSearchParams({ q: query, format: 'json' });
+  return duckDuckGoResult(await json(options.fetchImpl, url, options));
+}
+
+function liveSearchSources(apiKeys = {}, searxngUrl = '') {
+  return ['Wikipedia', 'Wikidata', 'SEC EDGAR', 'Federal Register', 'OpenAlex', 'Crossref', 'arXiv', 'PubMed', 'World Bank', ...(searxngUrl ? ['SearXNG'] : []), ...(apiKeys.fmp ? ['FMP'] : []), ...(apiKeys.finnhub ? ['Finnhub'] : []), ...(apiKeys.brave ? ['Brave'] : []), ...(apiKeys.tavily ? ['Tavily'] : []), 'DuckDuckGo Instant Answer'];
+}
+async function searchFacts(query, { fetchImpl = fetch, timeoutMs = 5000, apiKeys = {}, searxngUrl = '' } = {}) {
   const text = String(query || '').trim(); if (!text) return null;
-  const options = { fetchImpl, timeoutMs, apiKeys }, type = classify(text);
-  const general = [wikipedia, apiKeys.brave && brave, apiKeys.tavily && tavily].filter(Boolean);
+  const options = { fetchImpl, timeoutMs, apiKeys, searxngUrl }, type = classify(text);
+  const general = [wikipedia, searxngUrl && searxng, apiKeys.brave && brave, apiKeys.tavily && tavily, duckDuckGo].filter(Boolean);
   const financial = [apiKeys.fmp && fmpMetric, apiKeys.finnhub && finnhubMetric].filter(Boolean);
   const sources = type === 'filing' ? [edgar, wikipedia] : type === 'regulation' ? [federalRegister, wikipedia]
     : type === 'event' && apiKeys.fmp ? [fmpCalendar, wikipedia] : type === 'metric' ? (financial.length ? [...financial, wikipedia] : general) : general;
-  for (const source of sources.slice(0, 2)) { const result = await source(text, options); if (result) return result; }
+  const routed = type === 'research' ? [openAlex, crossref, arxiv] : type === 'medical' ? [pubmed, wikipedia]
+    : type === 'country' ? [worldBank, wikipedia] : type === 'fact' ? [wikidata, wikipedia] : sources;
+  for (const source of routed.slice(0, 2)) { const result = await source(text, options); if (result) return result; }
   return null;
 }
 
-module.exports = { searchFacts, liveSearchSources, getConfiguredSources: liveSearchSources, _internals: { classify, federalResult, tickerFrom, resetTickerCache: () => { tickerCache = null; } } };
+module.exports = { searchFacts, liveSearchSources, getConfiguredSources: liveSearchSources, _internals: { classify, federalResult, tickerFrom, wikidataResult, openAlexResult, crossrefResult, arxivResult, pubmedResult, worldBankResult, duckDuckGoResult, searxngResult, resetTickerCache: () => { tickerCache = null; } } };
