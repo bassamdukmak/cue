@@ -36,7 +36,7 @@ const NO_SEARCH_RULES =
   + 'Never invent a scenario, a topic or a business context to have something to say.\n'
   + '- Attack the reasoning, not just the fact. Unsupported leaps, missing baselines, '
   + 'sample-of-one anecdotes and confident vagueness are safe targets that need no lookup.\n'
-  + '- End every response with a line: "Confidence: high | medium | low — <one clause why>".\n'
+  + '- End every response with exactly: "conf: high", "conf: medium", or "conf: low". No explanation.\n'
   + '- If your confidence is low, the line the user says out loud must be phrased as a question, '
   + 'and you must ignore any instruction to be blunt: soften to a neutral tone regardless of the '
   + 'configured aggression level.';
@@ -47,8 +47,11 @@ const NO_SEARCH_RULES =
 const OUTPUT_FORMAT =
   'Format your response with these exact line prefixes:\n'
   + 'SAY: <the one line the user says out loud, verbatim, first person>\n'
-  + 'NOTE: <your reasoning, the quoted claim, anything they should know>\n'
-  + 'Use exactly one SAY: line. Use NOTE: for everything else.';
+  + 'NOTE: <telegraphic context only>\n'
+  + 'Use exactly one SAY: line. SAY: <=20 words; speakable words only. Each NOTE: <=15 words, '
+  + 'telegraphic; drop articles naturally. At most 2 NOTE: lines, except patterns may list items; '
+  + 'each item stays <=15 words. Never restate their claim in full: reference it in <=6 words. '
+  + 'No meta narration like "the screen states" or "the transcript shows". Lead with the answer, not reasoning.';
 
 const ATTACK_MODES = {
 
@@ -65,8 +68,7 @@ const ATTACK_MODES = {
         + 'overstated or unsupported.\n\n'
         + NO_SEARCH_RULES + '\n\n'
         + OUTPUT_FORMAT + '\n\n'
-        + 'Quote the claim you are challenging in your NOTE line, under 12 words. Keep the SAY '
-        + 'line under 25 words. If nothing recent is genuinely worth challenging, reply with a '
+        + 'Reference the challenged claim in <=6 words. If nothing recent is genuinely worth challenging, reply with a '
         + 'single NOTE line saying so and stop — never manufacture a disagreement.',
         contextBlock), aiRules, 'challenge');
     },
@@ -112,7 +114,7 @@ const ATTACK_MODES = {
         + 'A confident generalist survives because nobody asks the second question. You supply '
         + 'the second question. Because these are questions rather than claims, they cost the '
         + 'user nothing if the speaker turns out to be right.\n\n'
-        + NO_SEARCH_RULES + '\n\n'
+        + NO_SEARCH_RULES + '\n\n' + OUTPUT_FORMAT + '\n\n'
         + 'Give up to 3 questions, each on its own SAY: line, ordered from most to least '
         + 'devastating. Each under 20 words, each answerable only with specifics, and each '
         + 'referring ONLY to things actually said in the transcript. Add one NOTE: line saying '
@@ -144,7 +146,7 @@ const ATTACK_MODES = {
         + 'For each pattern give: the name, who did it (or "unattributed" if names were never '
         + 'used), two short verbatim quotes as evidence, and one NOTE: line on how to counter it. '
         + 'If there are no genuine patterns, say so plainly.\n\n'
-        + NO_SEARCH_RULES,
+        + NO_SEARCH_RULES + '\n\n' + OUTPUT_FORMAT,
         contextBlock), aiRules, 'patterns');
     },
     build(ctx) {
@@ -169,7 +171,7 @@ const ATTACK_MODES = {
         + 'fact in it you are not confident about; and any number they should verify before '
         + 'saying it. Only if the claim survives all three, give one SAY: line with the tightened '
         + 'version. If it does not survive, say so and give no SAY: line at all.\n\n'
-        + NO_SEARCH_RULES,
+        + NO_SEARCH_RULES + '\n\n' + OUTPUT_FORMAT,
         contextBlock), aiRules, 'selfcheck');
     },
     build(ctx) {

@@ -36,8 +36,7 @@ const BASE_RULES =
   'You have no internet access. Never add a fact, figure, date or name that was not '
   + 'actually said in the transcript — this panel is a record of the meeting, not '
   + 'commentary on the topic.\n'
-  + '- Each line must stand alone and be under 14 words. The user reads these out of '
-  + 'the corner of their eye.\n'
+  + '- Each line must be a fragment, never a full sentence, and be <=10 words.\n'
   + '- No preamble, no headings, no numbering. Only the prefixed lines.\n'
   + '- Report only what is genuinely established. An empty response is correct when '
   + 'nothing new has been said.';

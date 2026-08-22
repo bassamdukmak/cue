@@ -29,8 +29,10 @@ const OUTPUT_FORMAT =
   'Format with these exact line prefixes:\n'
   + 'NOTE: <the explanation>\n'
   + 'SAY: <only if the user needs to ask the room something — the exact words>\n'
-  + 'Most of the time there is no SAY line at all: the point is that the user does not '
-  + 'have to interrupt. Add one only when the term is internal and genuinely needs asking.';
+  + 'Most of the time there is no SAY line at all. Add one only for an internal term that needs asking. '
+  + 'SAY: <=20 words; speakable words only. Each NOTE: <=15 words, telegraphic; drop articles naturally. '
+  + 'At most 2 NOTE: lines, except glossary may list items; each item stays <=15 words. Never restate '
+  + 'their claim in full: reference it in <=6 words. No meta narration. Lead with the answer, not reasoning.';
 
 const ROLE =
   'You are cue, explaining things quietly to the user during a live meeting. "Them" is '
@@ -50,8 +52,7 @@ const DECODE_MODES = {
         ROLE + 'Find the term or idea in the recent conversation that a capable outsider would '
         + 'most likely not follow, and explain it.\n\n'
         + DECODE_RULES + '\n\n' + OUTPUT_FORMAT + '\n\n'
-        + 'Lead with the term itself, then the plain-language meaning, then one line on why it '
-        + 'matters in this conversation specifically. If everything recent was plain language, '
+        + 'Lead with the term and plain-language meaning. If everything recent was plain language, '
         + 'say so rather than inventing something to explain.',
         contextBlock), aiRules, 'define');
     },
@@ -72,8 +73,7 @@ const DECODE_MODES = {
         ROLE + 'A screenshot of the screen is attached — a diagram, dashboard, spreadsheet or '
         + 'code being discussed. Explain what the user is looking at.\n\n'
         + DECODE_RULES + '\n\n' + OUTPUT_FORMAT + '\n\n'
-        + 'Say what the thing IS first, then the two or three parts that matter, then what the '
-        + 'speaker is most likely drawing attention to. Skip anything decorative.',
+        + 'Say what it IS first, then only the parts that matter. Skip decoration.',
         contextBlock), aiRules, 'decodeScreen');
     },
     build(ctx) {
@@ -97,9 +97,9 @@ const DECODE_MODES = {
         + 'team?") reads as precision. A question that asks for the basics ("what is X?") reads '
         + 'as not having done the reading. Prefer the first shape wherever it still gets the '
         + 'answer.\n\n'
-        + 'Give 2 options on separate SAY: lines, each under 20 words, and one NOTE: line on '
+        + 'Give 2 options on separate SAY: lines and one NOTE: line on '
         + 'what each one signals to the room.\n\n'
-        + DECODE_RULES,
+        + DECODE_RULES + '\n\n' + OUTPUT_FORMAT,
         contextBlock), aiRules, 'askSmart');
     },
     build(ctx) {
@@ -121,7 +121,7 @@ const DECODE_MODES = {
         + 'One NOTE: line each, shortest first: the term, then a plain definition. Mark every '
         + 'company-specific term as INTERNAL and do not invent a meaning for it — list it as '
         + 'something to find out. Skip anything genuinely common.\n\n'
-        + DECODE_RULES,
+        + DECODE_RULES + '\n\n' + OUTPUT_FORMAT,
         contextBlock), aiRules, 'glossary');
     },
     build(ctx) {
@@ -160,7 +160,7 @@ const DECODE_MODES = {
         ROLE + 'The user captured one specific thing that was said. Explain just that.\n\n'
         + 'Be brief — one or two NOTE: lines. Say plainly when it looks like internal company '
         + 'shorthand you cannot know.\n\n'
-        + DECODE_RULES,
+        + DECODE_RULES + '\n\n' + OUTPUT_FORMAT,
         contextBlock), aiRules, 'defineThis');
     },
     build(ctx) {

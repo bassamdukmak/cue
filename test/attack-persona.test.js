@@ -45,9 +45,26 @@ test('every attack prompt carries the no-search safety rules', () => {
   for (const [name, def] of Object.entries(ATTACK_MODES)) {
     const system = def.buildSystem(null, '');
     assert.match(system, /no internet access/i, `${name} is missing the no-search warning`);
-    assert.match(system, /Confidence:/, `${name} does not require a confidence line`);
+    assert.match(system, /conf: high/, `${name} does not require a confidence tag`);
     assert.match(system, /prefer a question|questions rather than claims|question that exposes/i,
       `${name} does not prefer questions over assertions`);
+  }
+});
+
+test('every persona say-mode requires terse live-output limits', () => {
+  const { NEGOTIATION_MODES } = require('../src/negotiation-prompts');
+  const { DECODE_MODES } = require('../src/decode-prompts');
+  const { STANDUP_MODES } = require('../src/standup-prompts');
+  for (const [persona, definition] of [
+    ['interview', MODES.say],
+    ['attack', ATTACK_MODES.challenge],
+    ['negotiation', NEGOTIATION_MODES.respond],
+    ['decode', DECODE_MODES.define],
+    ['standup', STANDUP_MODES.update],
+  ]) {
+    const system = definition.buildSystem(null, '');
+    assert.match(system, /SAY: <=20 words/, `${persona} say-mode lacks the SAY limit`);
+    assert.match(system, /Each NOTE: <=15 words/, `${persona} say-mode lacks the NOTE limit`);
   }
 });
 

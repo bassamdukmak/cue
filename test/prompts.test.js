@@ -14,8 +14,8 @@ test('say mode produces a spoken answer not a question', () => {
   const system = MODES.say.buildSystem(null);
   const text = system + '\n' + MODES.say.build({ transcript: [], userText: '' });
   assert.match(text, /say out loud|in first person/i);
-  // Must instruct to write actual spoken words (not meta-instructions)
-  assert.match(text, /actual words|Write the|2.5 sentences/i);
+  // Must instruct a terse spoken line, not meta-instructions.
+  assert.match(text, /SAY: <=20 words|speakable words only/i);
 });
 
 test('leetcode mode ignores context block and returns coding prompt', () => {
@@ -24,9 +24,9 @@ test('leetcode mode ignores context block and returns coding prompt', () => {
   assert.ok(!system.includes('IGNORED_CONTEXT'), 'leetcode should not include context block');
 });
 
-test('followup mode returns a bullet list', () => {
+test('followup mode returns terse spoken lines', () => {
   const system = MODES.followup.buildSystem(null);
-  assert.match(system, /bullet list|bullets/i);
+  assert.match(system, /SAY: line|SAY: <=20 words/i);
 });
 
 test('all modes have a build function', () => {
