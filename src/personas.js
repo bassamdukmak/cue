@@ -12,11 +12,24 @@ const { ATTACK_MODES } = require('./attack-prompts');
 const { NEGOTIATION_MODES } = require('./negotiation-prompts');
 const { DECODE_MODES } = require('./decode-prompts');
 const { STANDUP_MODES } = require('./standup-prompts');
+const { NORMAL_MODES } = require('./normal-prompts');
 
 // Each persona remaps the six conversational modes and falls through for
 // anything it does not override, so leetcode keeps its strict interview prompt
 // everywhere.
 const PERSONAS = {
+  normal: {
+    label: 'Normal',
+    hint: 'General help, no angle',
+    modes: {
+      say: NORMAL_MODES.respond,
+      assist: NORMAL_MODES.helpScreen,
+      followup: NORMAL_MODES.questions,
+      recap: NORMAL_MODES.summary,
+      ask: NORMAL_MODES.assist,
+      answerThis: NORMAL_MODES.respondTo,
+    },
+  },
   interview: {
     label: 'Interview',
     hint: 'Help me answer well',

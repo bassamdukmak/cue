@@ -1616,10 +1616,11 @@
   // mid-meeting. Like #smart-toggle they save immediately rather than waiting
   // for the Settings Save button.
   const PERSONA_LABELS = {
-    interview: 'Interview', attack: 'Fact-check', negotiation: 'Negotiation',
+    normal: 'Normal', interview: 'Interview', attack: 'Fact-check', negotiation: 'Negotiation',
     decode: 'Decode', standup: 'Standup',
   };
   const PERSONA_INTENSITIES = {
+    normal: { title: 'Effort', color: '#B8BEC9', defaultLevel: 3, levels: [['Minimal', 'Give only the shortest useful answer.'], ['Light', 'Answer directly with a little context.'], ['Balanced', 'Answer clearly and add the most useful next step.'], ['Detailed', 'Cover key context, implications, and a practical next step.'], ['Thorough', 'Fully explain the answer, caveats, and sensible next actions.']] },
     interview: { title: 'Presence', color: '#3C83F5', defaultLevel: 3, levels: [['Reserved', 'Let the evidence speak; do not sell too hard.'], ['Measured', 'Calmly connect relevant experience to the question.'], ['Confident', 'State strengths clearly and back them with proof.'], ['Persuasive', 'Make a direct case for the user’s fit.'], ['Bold', 'Lead with the strongest credible case for the user.']] },
     attack: { title: 'Aggression', color: '#E0574A', defaultLevel: 2, levels: [['Gentle', 'Frame doubt as your own uncertainty.'], ['Curious', 'Ask for the source without passing judgment.'], ['Direct', 'State the disagreement plainly.'], ['Pointed', 'Name the gap in the reasoning.'], ['Blunt', 'Correct the claim without softeners.']] },
     negotiation: { title: 'Firmness', color: '#E0A33F', defaultLevel: 3, levels: [['Accommodating', 'Prioritize rapport and workable options.'], ['Cooperative', 'Look for mutual gains and clear trade-offs.'], ['Balanced', 'Hold the position while staying flexible on the path.'], ['Firm', 'Make boundaries and asks explicit.'], ['Hardline', 'Protect the position without becoming personal or rude.']] },
@@ -1631,6 +1632,7 @@
   // when challenging a claim than when answering an interviewer. Presentation
   // only — the buttons keep sending the same mode strings.
   const PERSONA_BUTTON_LABELS = {
+    normal: { say: 'What do I say?', assist: 'Help', followup: 'Questions', recap: 'Summary' },
     interview: { say: 'What should I say?', assist: 'Assist', followup: 'Follow-up', recap: 'Recap' },
     attack: { say: 'Challenge', assist: 'Check screen', followup: 'Probe', recap: 'Patterns' },
     negotiation: { say: 'What do I say?', assist: 'Where I stand', followup: 'Press', recap: 'Ledger' },

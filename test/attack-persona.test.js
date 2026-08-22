@@ -55,7 +55,9 @@ test('every persona say-mode requires terse live-output limits', () => {
   const { NEGOTIATION_MODES } = require('../src/negotiation-prompts');
   const { DECODE_MODES } = require('../src/decode-prompts');
   const { STANDUP_MODES } = require('../src/standup-prompts');
+  const { NORMAL_MODES } = require('../src/normal-prompts');
   for (const [persona, definition] of [
+    ['normal', NORMAL_MODES.respond],
     ['interview', MODES.say],
     ['attack', ATTACK_MODES.challenge],
     ['negotiation', NEGOTIATION_MODES.respond],
@@ -76,7 +78,7 @@ test('intensity exposes five named levels and preserves attack prompt lines byte
   assert.notEqual(getIntensityLine('attack', 1), getIntensityLine('attack', 5));
   assert.equal(getIntensityLine('attack', 99), getIntensityLine('attack', 2));
   assert.equal(getIntensityLine('interview', undefined), getIntensityLine('interview', 3));
-  for (const persona of ['interview', 'attack', 'negotiation', 'decode', 'standup']) {
+  for (const persona of ['normal', 'interview', 'attack', 'negotiation', 'decode', 'standup']) {
     assert.equal(getIntensityMeta(persona).levels.length, 5, `${persona} must expose five levels`);
   }
 });
@@ -262,6 +264,7 @@ test('screen recording never blocks startup', () => {
 
 const { DECODE_MODES } = require('../src/decode-prompts');
 const { STANDUP_MODES } = require('../src/standup-prompts');
+const { NORMAL_MODES } = require('../src/normal-prompts');
 
 test('decode refuses to guess at company-internal jargon', () => {
   for (const [name, def] of Object.entries(DECODE_MODES)) {
@@ -330,6 +333,21 @@ test('each persona watches for something different', () => {
     seen.add(system);
   }
   assert.equal(seen.size, 5, 'two personas share an insights prompt');
+});
+
+test('normal persona maps all six modes without changing leetcode', () => {
+  assert.deepEqual(PERSONAS.normal.modes, {
+    say: NORMAL_MODES.respond,
+    assist: NORMAL_MODES.helpScreen,
+    followup: NORMAL_MODES.questions,
+    recap: NORMAL_MODES.summary,
+    ask: NORMAL_MODES.assist,
+    answerThis: NORMAL_MODES.respondTo,
+  });
+  for (const mode of Object.keys(PERSONAS.normal.modes)) {
+    assert.notEqual(resolveMode('normal', mode), MODES[mode], `normal/${mode} still used the interview prompt`);
+  }
+  assert.equal(resolveMode('normal', 'leetcode'), MODES.leetcode);
 });
 
 test('the panel may not add facts that were never said', () => {

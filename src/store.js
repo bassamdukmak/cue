@@ -44,7 +44,7 @@ const DEFAULTS = {
   // conversational modes for claim-challenging ones.
   autoSuggest: false,    // suggest automatically when the other side stops talking
   persona: 'interview',
-  intensity: { interview: 3, attack: 2, negotiation: 3, decode: 3, standup: 3 },
+  intensity: { normal: 3, interview: 3, attack: 2, negotiation: 3, decode: 3, standup: 3 },
   roster: '',            // one per line: "Name | ally|neutral|target | notes"
   documents: [],         // [{ name, text, chars }] reference files for fact-checking
   meetingGoal: '',       // short-lived outcome for the current meeting

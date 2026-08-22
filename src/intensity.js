@@ -1,6 +1,16 @@
 const { AGGRESSION } = require('./attack-context');
 
 const INTENSITIES = {
+  normal: {
+    title: 'Effort',
+    levels: [
+      ['Minimal', 'Give only the shortest useful answer.', 'Effort: minimal. Give only the shortest useful answer; do not add initiative beyond the direct need.'],
+      ['Light', 'Answer directly with a little context.', 'Effort: light. Answer directly with only the context needed to make it useful.'],
+      ['Balanced', 'Answer clearly and add the most useful next step.', 'Effort: balanced. Answer clearly and add the most useful next step when it helps.'],
+      ['Detailed', 'Cover key context, implications, and a practical next step.', 'Effort: detailed. Cover key context, implications, and a practical next step without unnecessary detours.'],
+      ['Thorough', 'Fully explain the answer, caveats, and sensible next actions.', 'Effort: thorough. Fully explain the answer, relevant caveats, and sensible next actions.'],
+    ],
+  },
   interview: {
     title: 'Presence',
     levels: [
@@ -53,7 +63,7 @@ const INTENSITIES = {
   },
 };
 
-const DEFAULT_LEVELS = { interview: 3, attack: 2, negotiation: 3, decode: 3, standup: 3 };
+const DEFAULT_LEVELS = { normal: 3, interview: 3, attack: 2, negotiation: 3, decode: 3, standup: 3 };
 
 function getIntensityMeta(persona) {
   const intensity = INTENSITIES[persona] || INTENSITIES.interview;

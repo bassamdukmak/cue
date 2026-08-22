@@ -14,20 +14,22 @@ function loadAssembler() {
   return vm.runInNewContext(`(${match[0].replace(/\n\n\/\/ -------- feature runner --------$/, '')})`, { buildDocumentsBlock, getIntensityLine });
 }
 
-test('persistent context and intensity reach attack, interview, and negotiation prompts after documents', () => {
+test('persistent context and intensity reach normal, attack, interview, and negotiation prompts after documents', () => {
   const assemble = loadAssembler();
   const settings = {
     documents: [{ name: 'brief.pdf', text: 'The renewal is due Friday.' }],
     standingContext: 'I lead Acme procurement.',
     meetingGoal: 'Secure a six-month renewal.',
-    intensity: { interview: 3, attack: 2, negotiation: 4, decode: 3, standup: 3 },
+    intensity: { normal: 3, interview: 3, attack: 2, negotiation: 4, decode: 3, standup: 3 },
     resumeText: 'Procurement lead at Acme.',
   };
   const expected = ['=== Reference documents ===', '=== Standing context ===', '=== The user\'s goal for this meeting ==='];
   const attack = resolveMode('attack', 'say');
   const interview = resolveMode('interview', 'say');
   const negotiation = resolveMode('negotiation', 'say');
+  const normal = resolveMode('normal', 'say');
   const prompts = [
+    { persona: 'normal', prompt: normal.buildSystem(assemble(normal.buildContext(settings, []), { ...settings, persona: 'normal' }), '') },
     { persona: 'attack', prompt: attack.buildSystem(assemble(buildAttackContext(settings, []), { ...settings, persona: 'attack' }), '') },
     { persona: 'interview', prompt: interview.buildSystem(assemble(buildInterviewContext(settings, 'say', []), { ...settings, persona: 'interview' }), '') },
     { persona: 'negotiation', prompt: negotiation.buildSystem(assemble(negotiation.buildContext(settings, []), { ...settings, persona: 'negotiation' }), '') },
