@@ -19,7 +19,10 @@ const DEFAULTS = {
     threads: 0
   },
   smart: false,
-  searchMode: 'ask',
+  // Off by default: 'ask' blocks the whole request behind a consent chip, and a
+  // live assistant that stalls waiting for a click is worse than one that never
+  // searches. Opt in from Settings > Meeting.
+  searchMode: 'off',
   baseUrl: '',
   minimaxRegion: 'global_en',
   apiKeys: { openai: '', anthropic: '', gemini: '', deepgram: '', custom: '', ollama: '', groq: '', minimax: '' , azure: '' },

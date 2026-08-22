@@ -1246,7 +1246,9 @@
     chip.append(label, allow, deny);
     (aiEl?.parentElement || messages).appendChild(chip);
     setIgnore(false);
-    setTimeout(() => { if (!allow.disabled) answer(false); }, 60000);
+    // A live meeting cannot wait a minute for a click; deny fast and answer from
+    // memory rather than leaving the user staring at a spinner.
+    setTimeout(() => { if (!allow.disabled) answer(false); }, 12000);
   });
   cue.on('transcript', ({ channel, text }) => {
     if (!text || text.trim().length < 2 || /^[?!.,;:\-…]+$/.test(text.trim())) return;

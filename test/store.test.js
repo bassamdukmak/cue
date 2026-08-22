@@ -74,12 +74,13 @@ test('legacy aggression migrates into attack intensity without retaining the old
   }
 });
 
-test('new settings default to Ask first search and include Claude CLI models', () => {
+test('search is off by default and Claude CLI models are present', () => {
   const directory = fs.mkdtempSync(path.join(os.tmpdir(), 'cue-store-'));
   try {
     const store = loadStore(directory);
     const settings = store.getSettings();
-    assert.equal(settings.searchMode, 'ask');
+    // Off by default: an ask-gated search holds the busy lock behind a click.
+  assert.equal(settings.searchMode, 'off');
     assert.deepEqual(settings.models.claudecli, { fast: 'haiku', smart: 'sonnet' });
   } finally {
     fs.rmSync(directory, { recursive: true, force: true });
