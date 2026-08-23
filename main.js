@@ -83,6 +83,7 @@ let captureTransition = Promise.resolve(false);
 let soloFallbackAnnounced = false;
 let startupSettingsError = null;
 const MISSING_LOCAL_MODEL_MESSAGE = 'No speech model — open Settings > Audio and download one, or nothing will be transcribed.';
+const NOT_LISTENING_MESSAGE = 'Not listening — press ▶ to start';
 let autoScreenText = null;
 let autoScreenLastCheck = 0;
 let autoScreenReading = false;
@@ -121,6 +122,11 @@ function pushTranscript(turn) {
 }
 
 function send(channel, data) { if (win && !win.isDestroyed()) win.webContents.send(channel, data); }
+
+function publishCaptureState(active, streaming = false, mode = 'off') {
+  send('capture:state', { active, streaming, mode });
+  send('status', { message: active ? '' : NOT_LISTENING_MESSAGE, persistent: true, key: 'not-listening' });
+}
 
 async function warmScreenFromTranscript() {
   const settings = store.getSettings();
@@ -528,6 +534,10 @@ function createWindow() {
     reportMissingLocalModel(store.getSettings()).catch((error) => {
       console.log('[local-whisper] model check error', error && error.message);
     });
+    if (!state.capturing) publishCaptureState(false);
+    setTimeout(() => {
+      if (store.getSettings().autoListen && !desiredCaptureState) toggleCapture();
+    }, 2000);
   });
   win.webContents.on('render-process-gone', (_e, d) => {
     console.log('[cue] renderer gone', JSON.stringify(d));
@@ -693,14 +703,14 @@ async function setCapturing(active) {
         if (await reportMissingLocalModel(settings)) {
           state.capturing = false;
           desiredCaptureState = false;
-          send('capture:state', { active: false, streaming: false, mode: 'local' });
+          publishCaptureState(false, false, 'local');
           return false;
         }
         await startLocalWhisper(settings);
         send('status', { message: '', persistent: true, key: 'local-model' });
         state.capturing = true;
         console.log('[cue] capture started, mode: local');
-        send('capture:state', { active: true, streaming: false, mode: 'local' });
+        publishCaptureState(true, false, 'local');
         scheduleEmptyTranscriptStatus();
         return true;
       } catch (error) {
@@ -708,12 +718,12 @@ async function setCapturing(active) {
         desiredCaptureState = false;
         if (error.code === 'STARTUP_CANCELLED') {
           send('stt:status', { provider: 'local', status: 'off' });
-          send('capture:state', { active: false, streaming: false, mode: 'local' });
+          publishCaptureState(false, false, 'local');
           return false;
         }
         send('stt:status', { provider: 'local', status: 'error' });
         send('status', { message: `Local transcription could not start: ${error.message} No audio was sent to a cloud provider.` });
-        send('capture:state', { active: false, streaming: false, mode: 'local' });
+        publishCaptureState(false, false, 'local');
         return false;
       }
     }
@@ -725,7 +735,7 @@ async function setCapturing(active) {
       startFlushLoop();
     }
     console.log('[cue] capture started, mode:', streaming ? 'streaming' : 'batch');
-    send('capture:state', { active: true, streaming: streamingMode, mode: streaming ? 'streaming' : 'batch' });
+    publishCaptureState(true, streamingMode, streaming ? 'streaming' : 'batch');
     scheduleEmptyTranscriptStatus();
     return true;
   }
@@ -739,7 +749,7 @@ async function setCapturing(active) {
   ringBuffers.you.clear(); ringBuffers.them.clear();
   const stoppingLocalTranscriber = localWhisperTranscriber;
   localWhisperTranscriber = null;
-  send('capture:state', { active: false, streaming: false, mode: stoppingLocalTranscriber ? 'local' : 'off' });
+  publishCaptureState(false, false, stoppingLocalTranscriber ? 'local' : 'off');
   if (stoppingLocalTranscriber) {
     send('stt:status', { provider: 'local', status: 'stopping' });
     try {
@@ -938,7 +948,7 @@ ipcMain.on('search:respond', (_e, { id, allowed } = {}) => {
   const finish = pendingSearchRequests.get(id);
   if (finish) finish(allowed);
 });
-ipcMain.handle('capture:toggle', () => {
+function toggleCapture() {
   const targetState = !desiredCaptureState;
   desiredCaptureState = targetState;
   if (!targetState && !state.capturing && localWhisperTranscriber) {
@@ -948,7 +958,9 @@ ipcMain.handle('capture:toggle', () => {
     .catch(() => state.capturing)
     .then(() => setCapturing(targetState));
   return captureTransition;
-});
+}
+
+ipcMain.handle('capture:toggle', toggleCapture);
 ipcMain.handle('capture:state', () => ({ active: state.capturing }));
 ipcMain.handle('capture:input-failed', (_e, { channel, message } = {}) => {
   if (channel !== 'you' || !state.capturing) return false;

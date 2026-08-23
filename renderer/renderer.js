@@ -683,7 +683,7 @@
 
   // Stop = start/stop listening. Kick off system-audio capture straight from the click so
   // the user-gesture is fresh for getDisplayMedia (loopback capture needs it).
-  $('#stop-btn').addEventListener('click', async () => {
+  async function toggleCapture() {
     const turningOn = !$('#stop-btn').classList.contains('active');
     if (turningOn) {
       // startSystemAudio may fail (user cancels, no permission) — that's OK,
@@ -692,7 +692,9 @@
     }
     const active = await cue.captureToggle();
     if (turningOn && !active) stopSystemAudio();
-  });
+    return active;
+  }
+  $('#stop-btn').addEventListener('click', () => { void toggleCapture(); });
 
   // Transcript toggle removed — sidebar now auto-opens with listening
 
@@ -1526,6 +1528,7 @@
     // Style tab
     $('#ai-rules').value = settings.aiRules || '';
     $('#standing-context').value = settings.standingContext || '';
+    $('#auto-listen').checked = settings.autoListen !== false;
     $('#roster').value = settings.roster || '';
     $('#negotiation-floor').value = settings.negotiationFloor || '';
     $('#negotiation-notes').value = settings.negotiationNotes || '';
@@ -2017,6 +2020,7 @@
     settings.roster = $('#roster').value.trim();
     settings.negotiationFloor = $('#negotiation-floor').value.trim();
     settings.negotiationNotes = $('#negotiation-notes').value.trim();
+    settings.autoListen = $('#auto-listen').checked;
     // Q&A
     settings.salaryTarget = $('#salary-target').value.trim();
     settings.questionsToAsk = $('#questions-to-ask').value.trim();
@@ -2035,6 +2039,16 @@
       return false;
     }
   }
+
+  $('#auto-listen').addEventListener('change', async () => {
+    try {
+      settings = await cue.settingsSet({ autoListen: $('#auto-listen').checked });
+      if (settings.autoListen && !(await cue.captureState()).active) await toggleCapture();
+    } catch (error) {
+      $('#auto-listen').checked = !!settings.autoListen;
+      showStatus(`Settings were not saved: ${error.message || error}`, true, 'settings');
+    }
+  });
 
   // ---- example conversation (matches the reference screenshot) ------------
   function showExample() {

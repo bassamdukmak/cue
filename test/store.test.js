@@ -74,13 +74,14 @@ test('legacy aggression migrates into attack intensity without retaining the old
   }
 });
 
-test('search is off by default and Claude CLI models are present', () => {
+test('search is off, auto-listen is on by default, and Claude CLI models are present', () => {
   const directory = fs.mkdtempSync(path.join(os.tmpdir(), 'cue-store-'));
   try {
     const store = loadStore(directory);
     const settings = store.getSettings();
     // Off by default: an ask-gated search holds the busy lock behind a click.
   assert.equal(settings.searchMode, 'off');
+    assert.equal(settings.autoListen, true);
     assert.equal(settings.apiKeys.github, '');
     assert.deepEqual(settings.models.claudecli, { fast: 'haiku', smart: 'sonnet' });
   } finally {
