@@ -406,3 +406,17 @@ test('checking screen status must never trigger a capture', () => {
     'startup force-triggers the screen prompt again',
   );
 });
+
+test('every helper called in main.js is actually imported from its module', () => {
+  // A missing import is a runtime ReferenceError that node --check cannot see and
+  // no test catches because main.js requires electron. This bit twice: a lost
+  // applyPersonaButtonLabels broke boot, and a lost resetAutoSuggestTrigger broke
+  // EVERY capture start — the app could never begin listening.
+  const src = require('fs').readFileSync(require('path').join(__dirname, '..', 'main.js'), 'utf8');
+  for (const helper of ['resetAutoSuggestTrigger', 'shouldScheduleAutoSuggest', 'shouldCheckScreen', 'extractTextFromImage', 'searchFacts', 'getIntensityLine', 'buildDocumentsBlock', 'parseInsights']) {
+    if (new RegExp('\\b' + helper + '\\(').test(src)) {
+      assert.match(src, new RegExp('require\\([^)]*\\)[^;]*' + helper + '|' + helper + '[^;]*= require|\\{[^}]*' + helper + '[^}]*\\} = require'),
+        helper + ' is called in main.js but never imported');
+    }
+  }
+});

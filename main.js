@@ -32,7 +32,7 @@ const { WhisperModelManager } = require('./src/whisper-model-manager');
 const { requireWhisperModel } = require('./src/whisper-model-catalog');
 const { locateWhisperRuntime } = require('./src/whisper-runtime');
 const { LocalWhisperTranscriber } = require('./src/local-whisper-transcriber');
-const { shouldScheduleAutoSuggest } = require('./src/auto-suggest-trigger');
+const { shouldScheduleAutoSuggest, resetAutoSuggestTrigger } = require('./src/auto-suggest-trigger');
 const { shouldCheckScreen } = require('./src/screen-triggers');
 
 let win = null;
