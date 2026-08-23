@@ -96,6 +96,29 @@
   // out which half of a paragraph to read aloud. Replies with no prefixes (every
   // interview mode) fall straight through to plain markdown.
   const CHANNEL_PREFIX = /^(SAY|NOTE):\s*/;
+  const AUTO_NOTHING_RESPONSE = /nothing (recent|substantive|worth)|no substantive claim|silence (is )?fine/i;
+
+  function isAutoNothingResponse(raw, auto) {
+    return auto && !/^\s*SAY:/mi.test(raw) && AUTO_NOTHING_RESPONSE.test(raw.slice(0, 200));
+  }
+
+  function replaceWithNothingMarker(el) {
+    const group = el.closest('.response-group');
+    const previous = group && group.previousElementSibling;
+    if (previous?.classList.contains('auto-nothing-marker')) {
+      const count = Number(previous.dataset.count || 1) + 1;
+      previous.dataset.count = count;
+      previous.textContent = `· nothing to challenge ×${count}`;
+    } else {
+      const marker = document.createElement('div');
+      marker.className = 'auto-nothing-marker ip-empty';
+      marker.dataset.count = '1';
+      marker.textContent = '· nothing to challenge —';
+      messages.appendChild(marker);
+    }
+    group?.remove();
+    responseCount = Math.max(0, responseCount - 1);
+  }
 
   function renderChannels(raw) {
     const lines = raw.split('\n');
@@ -126,6 +149,11 @@
   function finalizeAi() {
     if (!aiEl) return;
     const raw = aiEl.dataset.raw || '';
+    if (isAutoNothingResponse(raw, aiEl.dataset.auto === 'true')) {
+      replaceWithNothingMarker(aiEl);
+      aiEl = null; caretEl = null;
+      return;
+    }
     aiEl.innerHTML = renderChannels(raw);
     aiEl = null; caretEl = null;
   }
@@ -1194,7 +1222,7 @@
   cue.on('vad:state', ({ channel, speaking }) => {
     setLiveDotState(speaking ? 'speaking' : 'idle');
   });
-  cue.on('llm:start', ({ userBubble, small, category }) => {
+  cue.on('llm:start', ({ userBubble, small, category, auto = false }) => {
     responseCount++;
     if (responseCount > MAX_RESPONSES) {
       const oldest = messages.querySelector('.response-group');
@@ -1222,6 +1250,7 @@
     aiEl = document.createElement('div');
     aiEl.className = 'ai-text' + (small ? ' small' : '');
     aiEl.dataset.raw = '';
+    aiEl.dataset.auto = String(auto);
     caretEl = document.createElement('span');
     caretEl.className = 'ai-caret';
     aiEl.appendChild(caretEl);

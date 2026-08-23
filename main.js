@@ -230,7 +230,7 @@ function scheduleAutoSuggest() {
     if (!store.getSettings().autoSuggest) return;
     if (!transcript.length) return;
     autoSuggestLastRun = Date.now();
-    runFeature('say', '');
+    runFeature('say', '', true);
   }, AUTO_SUGGEST_QUIET_MS);
 }
 
@@ -788,7 +788,7 @@ function modeNeedsTranscript(mode) {
   return mode === 'say' || mode === 'followup' || mode === 'recap';
 }
 
-async function runFeature(mode, userText) {
+async function runFeature(mode, userText, auto = false) {
   if (state.busy) return;
   // Persona decides which prompt table backs this mode; interview returns the
   // original definition untouched.
@@ -796,7 +796,7 @@ async function runFeature(mode, userText) {
   const def = resolveMode(persona, mode);
   if (!def) return;
   if (transcript.length === 0 && modeNeedsTranscript(mode)) {
-    send('llm:start', { userBubble: def.userBubble, small: !!def.small, category: null });
+    send('llm:start', { userBubble: def.userBubble, small: !!def.small, category: null, auto });
     send('llm:token', { text: EMPTY_TRANSCRIPT_MESSAGE });
     send('llm:done', {});
     return;
@@ -810,7 +810,7 @@ async function runFeature(mode, userText) {
       ? def.userBubble
       : (mode === 'ask' ? userText : mode === 'answerThis' ? `"${(userText || '').slice(0, 60)}${userText && userText.length > 60 ? '…' : ''}"` : null);
     const category = (mode !== 'leetcode' && persona !== 'attack') ? detectCategory(transcript) : null;
-    send('llm:start', { userBubble, small: !!def.small, category });
+    send('llm:start', { userBubble, small: !!def.small, category, auto });
 
     if (!llm.ready) {
       const message = llm.configurationError || ('Complete the ' + settings.provider + ' provider settings. Model: ' + (llm.model || 'unset') + '.');
