@@ -694,7 +694,18 @@
     if (turningOn && !active) stopSystemAudio();
     return active;
   }
+  function syncListeningControls(active) {
+    const stopBtn = $('#stop-btn');
+    stopBtn.classList.toggle('active', active);
+    stopBtn.title = active ? 'Stop listening' : 'Start listening';
+    const listenBtn = $('#listen-toggle');
+    listenBtn.classList.toggle('active', active);
+    listenBtn.setAttribute('aria-pressed', String(active));
+    listenBtn.title = active ? 'Stop listening' : 'Start listening';
+    $('#listen-label').textContent = active ? 'Listening' : '▶ Start listening';
+  }
   $('#stop-btn').addEventListener('click', () => { void toggleCapture(); });
+  $('#listen-toggle').addEventListener('click', () => { void toggleCapture(); });
 
   // Transcript toggle removed — sidebar now auto-opens with listening
 
@@ -1057,7 +1068,7 @@
   // ---- events from main --------------------------------------------------
   cue.on('capture:state', ({ active, streaming, mode }) => {
     setLiveDotState(active ? 'idle' : 'off');
-    $('#stop-btn').classList.toggle('active', active);
+    syncListeningControls(active);
     // FIX #4: Add .listening class to composer when capture is active
     composer.classList.toggle('listening', active);
     // Update history button to show active state when listening
@@ -1273,6 +1284,15 @@
     if (!el) {
       el = document.createElement('div');
       el.id = 'cue-status';
+      el.addEventListener('click', () => {
+        if (persistentStatuses['not-listening']) void toggleCapture();
+      });
+      el.addEventListener('keydown', (event) => {
+        if (persistentStatuses['not-listening'] && (event.key === 'Enter' || event.key === ' ')) {
+          event.preventDefault();
+          void toggleCapture();
+        }
+      });
       // Insert into panel-main before the action row
       const panelMain = document.getElementById('panel-main');
       const actionRow = document.getElementById('action-row');
@@ -1304,6 +1324,11 @@
     if (!el) return;
     const messages = [...Object.values(persistentStatuses), transientStatus].filter(Boolean);
     el.textContent = messages.join(' · ');
+    const canStartListening = !!persistentStatuses['not-listening'];
+    el.classList.toggle('start-listening', canStartListening);
+    el.tabIndex = canStartListening ? 0 : -1;
+    el.setAttribute('role', canStartListening ? 'button' : 'status');
+    el.title = canStartListening ? 'Start listening' : '';
     el.classList.toggle('show', messages.length > 0);
     el.classList.toggle('persistent', Object.keys(persistentStatuses).length > 0);
     el.classList.toggle('muted', !!transientStatus && transientMuted && Object.keys(persistentStatuses).length === 0);
@@ -2080,7 +2105,7 @@
   function setIgnore(v) { if (v !== ignoring) { ignoring = v; cue.setIgnoreMouse(v); } }
   document.addEventListener('mousemove', (e) => {
     const el = document.elementFromPoint(e.clientX, e.clientY);
-    const overUI = !!(el && el.closest && el.closest('#toolbar, #panel-wrap, .search-chip, #mode-menu, #goal-popover, #intensity-popover, #insights-panel, #transcript-sidebar, #settings-scrim, #onboard-scrim, #consent-scrim'));
+    const overUI = !!(el && el.closest && el.closest('#toolbar, #panel-wrap, #listen-toggle, .search-chip, #mode-menu, #goal-popover, #intensity-popover, #insights-panel, #transcript-sidebar, #settings-scrim, #onboard-scrim, #consent-scrim'));
     setIgnore(!overUI);
   });
   setIgnore(true); // start fully click-through; hovering the panel re-enables it
@@ -2242,7 +2267,7 @@
 
     const st = await cue.captureState();
     $('#live-dot').classList.toggle('off', !st.active);
-    $('#stop-btn').classList.toggle('active', st.active);
+    syncListeningControls(st.active);
     if (!settings.onboarded) showOnboard();
   })();
 })();

@@ -63,6 +63,7 @@
                 <textarea id="input" rows="1" spellcheck="false"></textarea>
               </div>
               <div id="composer-bottom">
+                <div class="composer-row composer-primary">
                 <div id="mode-menu" class="mode-menu">
                   <button id="mode-trigger" class="mode-trigger" title="What cue is helping you do">
                     <span id="mode-trigger-label">Interview</span><span class="mode-chev">▾</span>
@@ -105,6 +106,13 @@
                     <div class="intensity-ends"><span id="intensity-low">Reserved</span><span id="intensity-high">Bold</span></div>
                   </div>
                 </div>
+                <div class="spacer"></div>
+                <button id="send-btn" title="Send"></button>
+                </div>
+                <div class="composer-row composer-secondary">
+                <button id="listen-toggle" class="listen-pill" type="button" aria-pressed="false" title="Start listening">
+                  <span class="listen-dot" aria-hidden="true"></span><span id="listen-label">▶ Start listening</span>
+                </button>
                 <button id="auto-toggle" class="smart-pill" title="Suggest automatically when the other side stops talking"><span>Auto</span></button>
                 <button id="smart-toggle" class="smart-pill"><span class="ic"></span><span>Smart</span></button>
                 <div id="goal-control" class="goal-control">
@@ -115,8 +123,7 @@
                 </div>
                 <button id="history-btn" class="history-btn" title="View conversation history"><span class="ic"></span></button>
                 <button id="more-btn" class="more-btn" title="Settings"></button>
-                <div class="spacer"></div>
-                <button id="send-btn" title="Send"></button>
+                </div>
               </div>
             </div>
 
