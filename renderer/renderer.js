@@ -29,9 +29,14 @@
   let caretEl = null;
   let responseCount = 0;
   const MAX_RESPONSES = 20;
-  let actionChips = []; // Wave A plumbing; a later renderer wave owns display.
+  let actionChips = [];
+  let responseHost = null;
+  let answerDismissed = false;
 
   const messages = $('#messages');
+  const ephemeralAnswer = $('#ephemeral-answer');
+  const ephemeralAnswerContent = $('#ephemeral-answer-content');
+  responseHost = messages;
 
   function esc(s) { return s.replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c])); }
 
@@ -61,6 +66,30 @@
 
   function clearMessages() { messages.innerHTML = ''; aiEl = null; caretEl = null; }
 
+  function clearEphemeralAnswer() {
+    const group = ephemeralAnswerContent.querySelector('.response-group');
+    const hadActiveAnswer = !!(aiEl && ephemeralAnswerContent.contains(aiEl));
+    if (group) responseCount = Math.max(0, responseCount - 1);
+    ephemeralAnswerContent.replaceChildren();
+    ephemeralAnswer.classList.add('hidden');
+    if (hadActiveAnswer) { aiEl = null; caretEl = null; }
+    responseHost = messages;
+    answerDismissed = true;
+  }
+
+  function pinEphemeralAnswer() {
+    const group = ephemeralAnswerContent.querySelector('.response-group');
+    if (!group) return;
+    group.classList.remove('auto-response', 'ephemeral-response');
+    if (aiEl && group.contains(aiEl)) aiEl.dataset.auto = 'false';
+    messages.appendChild(group);
+    ephemeralAnswer.classList.add('hidden');
+    responseHost = messages;
+  }
+
+  $('#dismiss-answer-btn').addEventListener('click', clearEphemeralAnswer);
+  $('#pin-answer-btn').addEventListener('click', pinEphemeralAnswer);
+
   function addUserBubble(text) {
     const b = document.createElement('div');
     b.className = 'user-bubble';
@@ -75,10 +104,11 @@
     caretEl = document.createElement('span');
     caretEl.className = 'ai-caret';
     aiEl.appendChild(caretEl);
-    messages.appendChild(aiEl);
+    responseHost.appendChild(aiEl);
   }
 
   function appendToken(t) {
+    if (answerDismissed) return;
     if (!aiEl) startAi(false);
     aiEl.dataset.raw += t;
     const span = document.createElement('span');
@@ -115,7 +145,7 @@
       marker.className = 'auto-nothing-marker ip-empty';
       marker.dataset.count = '1';
       marker.textContent = '· nothing to challenge —';
-      messages.appendChild(marker);
+      group?.parentElement?.appendChild(marker);
     }
     group?.remove();
     responseCount = Math.max(0, responseCount - 1);
@@ -666,37 +696,92 @@
     panel.classList.toggle('hidden', !settings.autoSuggest || insightsDismissed);
   }
 
-  function addInsightLines(lines, kind) {
-    const host = kind === 'action' ? $('#actions-list') : $('#insights-list');
+  const ACTION_ICONS = { answer: '?', define: '📖', challenge: '⚡', say: '💬', recap: '📋' };
+  let actionRenderTimer = null;
+  let actionChipPending = null;
+
+  function actionAccent() {
+    return PERSONA_INTENSITIES[settings?.persona || 'interview']?.color || '#3C83F5';
+  }
+
+  function makeActionChip(action) {
+    const chip = document.createElement('button');
+    chip.type = 'button';
+    chip.className = 'action-chip';
+    chip.dataset.actionId = action.id;
+    chip.style.setProperty('--chip-accent', actionAccent());
+    chip.innerHTML = `<span class="action-chip-icon" aria-hidden="true">${ACTION_ICONS[action.kind] || '?'}</span><span>${esc(action.label || '')}</span>`;
+    chip.title = action.label || action.kind;
+    chip.addEventListener('click', () => {
+      if (busy || actionChipPending) return;
+      actionChipPending = action.id;
+      document.querySelectorAll('.action-chip[data-action-id="' + action.id + '"]').forEach((el) => {
+        el.classList.add('loading');
+        el.disabled = true;
+      });
+      cue.actionInvoke(action.id, action.kind, action.payload);
+    });
+    return chip;
+  }
+
+  function renderActionChips() {
+    const hosts = [$('#action-strip'), $('#actions-list')];
+    const render = () => {
+      hosts.forEach((host) => {
+        host.replaceChildren(...actionChips.map(makeActionChip));
+        host.classList.remove('action-chip-set--out');
+        host.classList.toggle('action-chip-set--in', actionChips.length > 0);
+      });
+      $('#actions-title').classList.toggle('hidden', actionChips.length === 0);
+      if (actionChips.length) $('#insights-empty').classList.add('hidden');
+    };
+    clearTimeout(actionRenderTimer);
+    if (hosts.some((host) => host.childElementCount)) {
+      hosts.forEach((host) => host.classList.add('action-chip-set--out'));
+      actionRenderTimer = setTimeout(render, 150);
+    } else {
+      render();
+    }
+  }
+
+  function clearActionChips() {
+    clearTimeout(actionRenderTimer);
+    actionChips = [];
+    actionChipPending = null;
+    [$('#action-strip'), $('#actions-list')].forEach((host) => host.replaceChildren());
+    $('#actions-title').classList.add('hidden');
+  }
+
+  function addInsightLines(lines) {
+    const host = $('#insights-list');
     if (!host || !lines.length) return;
     // Everything already there becomes background; only the new lines are bright.
     host.querySelectorAll('.ip-item').forEach((el) => el.classList.add('stale'));
     for (const text of lines) {
       const item = document.createElement('div');
-      item.className = 'ip-item' + (kind === 'action' ? ' action' : '');
+      item.className = 'ip-item';
       item.textContent = text;
       host.appendChild(item);
     }
     $('#insights-empty').classList.add('hidden');
-    if (kind === 'action') $('#actions-title').classList.remove('hidden');
     // Newest sits at the bottom, so keep it in view.
     $('#insights-body').scrollTop = $('#insights-body').scrollHeight;
   }
 
-  cue.on('insights:new', ({ insights, actions }) => {
-    addInsightLines(insights || [], 'insight');
-    addInsightLines(actions || [], 'action');
+  cue.on('insights:new', ({ insights }) => {
+    addInsightLines(insights || []);
   });
 
   cue.on('insights:clear', () => {
     $('#insights-list').innerHTML = '';
-    $('#actions-list').innerHTML = '';
-    $('#actions-title').classList.add('hidden');
+    clearActionChips();
     $('#insights-empty').classList.remove('hidden');
   });
 
   cue.on('actions:new', ({ actions }) => {
     actionChips = Array.isArray(actions) ? actions : [];
+    actionChipPending = null;
+    renderActionChips();
   });
 
   $('#insights-close-btn').addEventListener('click', () => {
@@ -1113,6 +1198,10 @@
     // so that the getDisplayMedia request has a fresh user gesture.
     // Here we only start the mic (no gesture required) and stop everything on deactivate.
     if (active) {
+      clearMessages();
+      clearEphemeralAnswer();
+      clearActionChips();
+      responseCount = 0;
       startMic();
       // Don't auto-open sidebar — user can toggle it manually
     } else {
@@ -1141,11 +1230,11 @@
     if (!interimEl) {
       interimEl = document.createElement('div');
       interimEl.className = 'interim-transcript';
-      // Insert into panel-main (the left column), before the action row
+      // Insert into panel-main before the ephemeral surface.
       const panelMain = document.getElementById('panel-main');
-      const actionRow = document.getElementById('action-row');
-      if (panelMain && actionRow && actionRow.parentNode === panelMain) {
-        panelMain.insertBefore(interimEl, actionRow);
+      const answerSlot = document.getElementById('ephemeral-answer');
+      if (panelMain && answerSlot) {
+        panelMain.insertBefore(interimEl, answerSlot);
       } else if (panelMain) {
         panelMain.appendChild(interimEl);
       } else {
@@ -1227,14 +1316,22 @@
   cue.on('vad:state', ({ channel, speaking }) => {
     setLiveDotState(speaking ? 'speaking' : 'idle');
   });
-  cue.on('llm:start', ({ userBubble, small, category, auto = false }) => {
-    if (auto) {
-      const previousAuto = messages.querySelector('.response-group.auto-response');
+  cue.on('llm:start', ({ userBubble, small, category, auto = false, ephemeral = false }) => {
+    const liveAnswer = auto || ephemeral;
+    if (liveAnswer) {
+      const previousAuto = ephemeralAnswerContent.querySelector('.response-group.auto-response');
       if (previousAuto) {
         previousAuto.remove();
         responseCount = Math.max(0, responseCount - 1);
       }
+      ephemeralAnswerContent.querySelector('.auto-nothing-marker')?.remove();
+      ephemeralAnswer.classList.remove('hidden');
+      responseHost = ephemeralAnswerContent;
+    } else {
+      responseHost = messages;
     }
+    answerDismissed = false;
+    actionChipPending = null;
     responseCount++;
     if (responseCount > MAX_RESPONSES) {
       const oldest = messages.querySelector('.response-group');
@@ -1243,12 +1340,12 @@
     }
     const group = document.createElement('div');
     group.className = 'response-group';
-    if (auto) group.classList.add('auto-response');
+    if (liveAnswer) group.classList.add('auto-response', 'ephemeral-response');
     const sep = document.createElement('div');
     sep.className = 'response-sep';
     sep.textContent = new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
     group.appendChild(sep);
-    if (!auto && userBubble) {
+    if (!liveAnswer && userBubble) {
       const b = document.createElement('div');
       b.className = 'user-bubble';
       b.textContent = userBubble;
@@ -1268,7 +1365,7 @@
     caretEl.className = 'ai-caret';
     aiEl.appendChild(caretEl);
     group.appendChild(aiEl);
-    messages.appendChild(group);
+    responseHost.appendChild(group);
     // Use requestAnimationFrame so the DOM is fully updated before scrolling
     requestAnimationFrame(() => {
       if (sep && sep.isConnected) sep.scrollIntoView({ behavior: 'smooth', block: 'start' });
@@ -1278,8 +1375,9 @@
   cue.on('llm:token', ({ text }) => appendToken(text));
   cue.on('llm:done', () => { finalizeAi(); setBusy(false); });
   cue.on('llm:error', ({ message }) => {
-    if (!aiEl) startAi(true);
-    aiEl.dataset.raw = message; finalizeAi(); setBusy(false);
+    if (!aiEl && !answerDismissed) startAi(true);
+    if (aiEl) { aiEl.dataset.raw = message; finalizeAi(); }
+    setBusy(false);
   });
   cue.on('search:request', ({ id, query, sources }) => {
     const chip = document.createElement('div');
@@ -1335,11 +1433,11 @@
           void toggleCapture();
         }
       });
-      // Insert into panel-main before the action row
+      // Keep status above the live answer and composer.
       const panelMain = document.getElementById('panel-main');
-      const actionRow = document.getElementById('action-row');
-      if (panelMain && actionRow && actionRow.parentNode === panelMain) {
-        panelMain.insertBefore(el, actionRow);
+      const answerSlot = document.getElementById('ephemeral-answer');
+      if (panelMain && answerSlot) {
+        panelMain.insertBefore(el, answerSlot);
       } else if (panelMain) {
         panelMain.appendChild(el);
       } else {
@@ -1516,7 +1614,7 @@
     dismissBtn.addEventListener('click', () => banner.classList.remove('show'));
     actions.appendChild(dismissBtn);
     const panel = document.getElementById('panel');
-    panel.insertBefore(banner, document.getElementById('action-row'));
+    panel.insertBefore(banner, document.getElementById('panel-columns'));
   }
 
   // ---- settings ----------------------------------------------------------
@@ -2147,7 +2245,7 @@
   function setIgnore(v) { if (v !== ignoring) { ignoring = v; cue.setIgnoreMouse(v); } }
   document.addEventListener('mousemove', (e) => {
     const el = document.elementFromPoint(e.clientX, e.clientY);
-    const overUI = !!(el && el.closest && el.closest('#toolbar, #panel-wrap, #listen-toggle, .search-chip, #mode-menu, #goal-popover, #intensity-popover, #insights-panel, #transcript-sidebar, #settings-scrim, #onboard-scrim, #consent-scrim'));
+    const overUI = !!(el && el.closest && el.closest('#toolbar, #panel-wrap, #ephemeral-answer, #action-strip, #listen-toggle, .search-chip, #mode-menu, #goal-popover, #intensity-popover, #insights-panel, #transcript-sidebar, #settings-scrim, #onboard-scrim, #consent-scrim'));
     setIgnore(!overUI);
   });
   setIgnore(true); // start fully click-through; hovering the panel re-enables it

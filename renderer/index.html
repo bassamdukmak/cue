@@ -39,23 +39,17 @@
           <div id="panel-main">
             <div id="messages"></div>
 
-            <div id="action-row">
-              <button class="act act-primary" data-mode="say"
-                title="Suggests what to say next based on the conversation">
-                <span class="ic"></span><span class="lbl">What should I say?</span>
-                <span class="shortcut-hint" id="say-shortcut-hint"></span>
-              </button>
-              <span class="sep">•</span>
-              <button class="act act-secondary" data-mode="assist"
-                title="Scans your screen and conversation to decide what you need">
-                <span class="ic"></span><span class="lbl">Assist</span>
-                <span class="shortcut-hint" id="assist-shortcut-hint"></span>
-              </button>
-              <span class="sep">•</span>
-              <button class="act" data-mode="followup"><span class="ic"></span><span class="lbl">Follow-up</span></button>
-              <span class="sep">•</span>
-              <button class="act" data-mode="recap"><span class="ic"></span><span class="lbl">Recap</span></button>
+            <div id="ephemeral-answer" class="ephemeral-answer hidden" aria-live="polite">
+              <div class="ephemeral-answer-head">
+                <span>Live answer</span>
+                <div class="ephemeral-answer-controls">
+                  <button id="pin-answer-btn" type="button" title="Keep this answer in history">Pin</button>
+                  <button id="dismiss-answer-btn" type="button" title="Dismiss live answer" aria-label="Dismiss live answer">✕</button>
+                </div>
+              </div>
+              <div id="ephemeral-answer-content"></div>
             </div>
+            <div id="action-strip" class="action-chip-set" aria-label="Suggested actions"></div>
 
             <div id="composer">
               <div id="input-area">
@@ -157,6 +151,23 @@
       <div class="ts-header drag-handle">
         <span class="ts-title">Conversation History</span>
         <button class="ts-close-btn" id="close-sidebar-btn" title="Close history">✕</button>
+      </div>
+      <div id="action-row">
+        <button class="act act-primary" data-mode="say"
+          title="Suggests what to say next based on the conversation">
+          <span class="ic"></span><span class="lbl">What should I say?</span>
+          <span class="shortcut-hint" id="say-shortcut-hint"></span>
+        </button>
+        <span class="sep">•</span>
+        <button class="act act-secondary" data-mode="assist"
+          title="Scans your screen and conversation to decide what you need">
+          <span class="ic"></span><span class="lbl">Assist</span>
+          <span class="shortcut-hint" id="assist-shortcut-hint"></span>
+        </button>
+        <span class="sep">•</span>
+        <button class="act" data-mode="followup"><span class="ic"></span><span class="lbl">Follow-up</span></button>
+        <span class="sep">•</span>
+        <button class="act" data-mode="recap"><span class="ic"></span><span class="lbl">Recap</span></button>
       </div>
       <div id="ts-list" class="ts-list">
         <div class="ts-placeholder">Conversation history will appear here when listening.</div>

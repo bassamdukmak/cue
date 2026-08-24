@@ -849,7 +849,7 @@ function modeNeedsTranscript(mode) {
   return mode === 'say' || mode === 'followup' || mode === 'recap';
 }
 
-async function runFeature(mode, userText, auto = false) {
+async function runFeature(mode, userText, auto = false, ephemeral = false) {
   if (state.busy) return;
   // Persona decides which prompt table backs this mode; interview returns the
   // original definition untouched.
@@ -857,7 +857,7 @@ async function runFeature(mode, userText, auto = false) {
   const def = resolveMode(persona, mode);
   if (!def) return;
   if (transcript.length === 0 && modeNeedsTranscript(mode)) {
-    send('llm:start', { userBubble: def.userBubble, small: !!def.small, category: null, auto });
+    send('llm:start', { userBubble: def.userBubble, small: !!def.small, category: null, auto, ephemeral });
     send('llm:token', { text: EMPTY_TRANSCRIPT_MESSAGE });
     send('llm:done', {});
     return;
@@ -871,7 +871,7 @@ async function runFeature(mode, userText, auto = false) {
       ? def.userBubble
       : (mode === 'ask' ? userText : mode === 'answerThis' ? `"${(userText || '').slice(0, 60)}${userText && userText.length > 60 ? '…' : ''}"` : null);
     const category = (mode !== 'leetcode' && persona !== 'attack') ? detectCategory(transcript) : null;
-    send('llm:start', { userBubble, small: !!def.small, category, auto });
+    send('llm:start', { userBubble, small: !!def.small, category, auto, ephemeral });
 
     if (!llm.ready) {
       const message = llm.configurationError || ('Complete the ' + settings.provider + ' provider settings. Model: ' + (llm.model || 'unset') + '.');
@@ -1019,7 +1019,7 @@ ipcMain.on('action:invoke', (_e, { id, kind, payload } = {}) => {
     recap: ['recap', ''],
   };
   const action = actionModes[kind];
-  if (action) void runFeature(action[0], action[1], false);
+  if (action) void runFeature(action[0], action[1], false, true);
 });
 function toggleCapture() {
   const targetState = !desiredCaptureState;

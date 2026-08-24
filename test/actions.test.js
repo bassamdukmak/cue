@@ -41,6 +41,9 @@ test('automatic actions are fast, replace the list, and invoke explicit modes', 
   assert.match(mainSource, /challenge: \['answerThis', payload\]/);
   assert.match(mainSource, /say: \['say', ''\]/);
   assert.match(mainSource, /recap: \['recap', ''\]/);
+  assert.match(mainSource, /async function runFeature\(mode, userText, auto = false, ephemeral = false\)/);
+  assert.match(mainSource, /send\('llm:start', \{ userBubble, small: !!def\.small, category, auto, ephemeral \}\)/);
+  assert.match(mainSource, /runFeature\(action\[0\], action\[1\], false, true\)/);
 });
 
 test('capture lifecycle resets state and archives the requested session shape', () => {
