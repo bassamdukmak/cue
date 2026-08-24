@@ -219,9 +219,9 @@ function getWhisperRuntime() {
 // API call. It never queues — if the user pressed something manually, that wins
 // and the automatic run is simply skipped.
 const AUTO_SUGGEST_QUIET_MS = 2500;   // silence that counts as "they finished"
-const AUTO_SUGGEST_MIN_GAP_MS = 30000; // floor between runs, so a long monologue is not billed per pause
+const ACTIONS_MIN_GAP_MS = 6000;
 let autoSuggestTimer = null;
-let autoSuggestLastRun = 0;
+let actionsLastRun = 0;
 let actionsBusy = false;
 let actionsGeneration = 0;
 let actionIdSeq = 0;
@@ -232,10 +232,10 @@ function scheduleAutoSuggest() {
   autoSuggestTimer = setTimeout(() => {
     autoSuggestTimer = null;
     if (state.busy) return;
-    if (Date.now() - autoSuggestLastRun < AUTO_SUGGEST_MIN_GAP_MS) return;
+    if (Date.now() - actionsLastRun < ACTIONS_MIN_GAP_MS) return;
     if (!store.getSettings().autoSuggest) return;
     if (!transcript.length) return;
-    autoSuggestLastRun = Date.now();
+    actionsLastRun = Date.now();
     void runActions();
   }, AUTO_SUGGEST_QUIET_MS);
 }
@@ -291,9 +291,13 @@ async function runActions() {
       onUsage: recordUsage,
     });
     if (generation !== actionsGeneration) return;
-    send('actions:new', {
-      actions: parseActions(reply).map((action) => ({ id: `action-${++actionIdSeq}`, ...action })),
-    });
+    const actions = parseActions(reply);
+    // Keep existing chips when the model has no useful replacements.
+    if (actions.length) {
+      send('actions:new', {
+        actions: actions.map((action) => ({ id: `action-${++actionIdSeq}`, ...action })),
+      });
+    }
   } catch (error) {
     recordEvent({ level: 'warn', event: 'actions_failed', msg: error?.message || String(error), frame: 'runActions' });
   } finally {
@@ -1019,7 +1023,7 @@ ipcMain.on('action:invoke', (_e, { id, kind, payload } = {}) => {
     recap: ['recap', ''],
   };
   const action = actionModes[kind];
-  if (action) void runFeature(action[0], action[1], false, true);
+  if (action) void runFeature(action[0], action[1], false, true).finally(scheduleAutoSuggest);
 });
 function toggleCapture() {
   const targetState = !desiredCaptureState;

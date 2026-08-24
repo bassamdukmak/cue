@@ -28,7 +28,6 @@ test('insights compare a monotonic counter, not the capped transcript length', (
 test('insights cost limits remain bounded', () => {
   assert.match(mainSource, /const INSIGHTS_INTERVAL_MS = 60000/, 'insights interval is too frequent');
   assert.match(mainSource, /const INSIGHTS_MAX_LINES = 12/, 'insights history is too large');
-  assert.match(mainSource, /const AUTO_SUGGEST_MIN_GAP_MS = 30000/, 'auto-suggest gap is too short');
   assert.match(functionBody('runInsights'), /maxTokens: 250/, 'insights output cap is missing');
 });
 

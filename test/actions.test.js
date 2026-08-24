@@ -34,7 +34,8 @@ test('action prompts require verbatim payloads and use only recent turns', () =>
 test('automatic actions are fast, replace the list, and invoke explicit modes', () => {
   assert.match(mainSource, /forceTier: 'fast'/);
   assert.match(mainSource, /maxTokens: 150/);
-  assert.match(mainSource, /send\('actions:new', \{\s*actions: parseActions/);
+  assert.match(mainSource, /const actions = parseActions\(reply\)/);
+  assert.match(mainSource, /if \(actions\.length\) \{\s*send\('actions:new'/);
   assert.match(mainSource, /ipcMain\.on\('action:invoke'/);
   assert.match(mainSource, /answer: \['answerThis', payload\]/);
   assert.match(mainSource, /define: \['answerThis', 'Define: ' \+ payload\]/);
@@ -43,7 +44,22 @@ test('automatic actions are fast, replace the list, and invoke explicit modes', 
   assert.match(mainSource, /recap: \['recap', ''\]/);
   assert.match(mainSource, /async function runFeature\(mode, userText, auto = false, ephemeral = false\)/);
   assert.match(mainSource, /send\('llm:start', \{ userBubble, small: !!def\.small, category, auto, ephemeral \}\)/);
-  assert.match(mainSource, /runFeature\(action\[0\], action\[1\], false, true\)/);
+  assert.match(mainSource, /runFeature\(action\[0\], action\[1\], false, true\)\.finally\(scheduleAutoSuggest\)/);
+});
+
+test('chip scheduling has its own gap and empty results do not clear chips', () => {
+  const scheduleStart = mainSource.indexOf('function scheduleAutoSuggest');
+  const scheduleEnd = mainSource.indexOf('// -------- session usage', scheduleStart);
+  const schedule = mainSource.slice(scheduleStart, scheduleEnd);
+  assert.match(mainSource, /const ACTIONS_MIN_GAP_MS = 6000/);
+  assert.match(schedule, /Date\.now\(\) - actionsLastRun < ACTIONS_MIN_GAP_MS/);
+  assert.doesNotMatch(schedule, /AUTO_SUGGEST_MIN_GAP_MS/);
+
+  const runStart = mainSource.indexOf('async function runActions');
+  const runEnd = mainSource.indexOf('// -------- live insights panel', runStart);
+  const run = mainSource.slice(runStart, runEnd);
+  assert.match(run, /if \(actions\.length\) \{\s*send\('actions:new'/);
+  assert.doesNotMatch(run, /send\('actions:new', \{\s*actions: parseActions/);
 });
 
 test('capture lifecycle resets state and archives the requested session shape', () => {
