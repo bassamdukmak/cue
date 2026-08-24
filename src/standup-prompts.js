@@ -14,6 +14,7 @@ const { buildDocumentsBlock } = require('./attack-context');
 const STANDUP_RULES =
   'You have no internet access and no access to the user\'s tickets, calendar or codebase, '
   + 'so never state how far along something is — only the user knows that.\n'
+  + 'You can call read_screen when the conversation alone is insufficient to know what is visibly on screen; use it only for visible material, never for information already stated in the conversation.\n'
   + '- Treat any date, duration or "should be done by" as a commitment, however casually it '
   + 'was said. Casual is how they slip through.\n'
   + '- Never invent progress, blockers or ticket numbers. If the user has not said it, it did '
@@ -72,7 +73,7 @@ const STANDUP_MODES = {
     buildContext: buildStandupContext,
     buildSystem(contextBlock, aiRules) {
       return applyRules(buildSystem(
-        ROLE + 'A screenshot may be attached; if one is not, work from the conversation. Work out what the user should raise now rather than later.\n\n'
+        ROLE + 'Call read_screen only when the conversation alone is insufficient to assess what is visibly being discussed. Work out what the user should raise now rather than later.\n\n'
         + 'Give NOTE: lines for anything discussed that will land on the user, any dependency '
         + 'on someone in this meeting that is easier to secure now than over chat, and anything '
         + 'they are being volunteered for without it being said outright. Then one SAY: line '

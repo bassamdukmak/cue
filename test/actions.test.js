@@ -10,12 +10,13 @@ test('parseActions accepts valid action lines and caps the result', () => {
   assert.deepEqual(parseActions([
     'ACTION: answer | Answer this | What is the timeline?',
     'ACTION: define | Define term | CAC payback',
+    'ACTION: screen | Look at screen | As you can see, these numbers changed.',
     'ACTION: challenge | Check claim | We doubled revenue.',
     'ACTION: say | Speak now | They asked for your view.',
   ].join('\n')), [
     { kind: 'answer', label: 'Answer this', payload: 'What is the timeline?' },
     { kind: 'define', label: 'Define term', payload: 'CAC payback' },
-    { kind: 'challenge', label: 'Check claim', payload: 'We doubled revenue.' },
+    { kind: 'screen', label: 'Look at screen', payload: 'As you can see, these numbers changed.' },
   ]);
 });
 
@@ -40,6 +41,7 @@ test('automatic actions are fast, replace the list, and invoke explicit modes', 
   assert.match(mainSource, /answer: \['answerThis', payload\]/);
   assert.match(mainSource, /define: \['answerThis', 'Define: ' \+ payload\]/);
   assert.match(mainSource, /challenge: \['answerThis', payload\]/);
+  assert.match(mainSource, /screen: \['assist', ''\]/);
   assert.match(mainSource, /say: \['say', ''\]/);
   assert.match(mainSource, /recap: \['recap', ''\]/);
   assert.match(mainSource, /async function runFeature\(mode, userText, auto = false, ephemeral = false\)/);

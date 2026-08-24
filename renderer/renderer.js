@@ -696,7 +696,7 @@
     panel.classList.toggle('hidden', !settings.autoSuggest || insightsDismissed);
   }
 
-  const ACTION_ICONS = { answer: '?', define: '📖', challenge: '⚡', say: '💬', recap: '📋' };
+  const ACTION_ICONS = { answer: '?', define: '📖', challenge: '⚡', screen: '👁', say: '💬', recap: '📋' };
   let actionRenderTimer = null;
   let actionChipPending = null;
 

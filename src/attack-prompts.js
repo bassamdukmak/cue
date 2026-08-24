@@ -17,6 +17,7 @@ const { buildAttackContext } = require('./attack-context');
 const NO_SEARCH_RULES =
   'A factual-search tool exists, but it is slow. Use it only when a specific factual claim is '
   + 'worth verifying; do not search for general advice. Everything else may be stale or wrong. '
+  + 'You can call read_screen when the conversation alone is insufficient to know what is visibly on screen; use it only for visible material, never for information already stated in the conversation. '
   + 'A confident correction that turns out false will damage the user\'s credibility permanently.\n'
   + '- Prefer a QUESTION over an assertion. A question that exposes a weak claim cannot itself '
   + 'be factually wrong. Only assert a correction outright when you would stake your reputation on it.\n'
@@ -87,8 +88,8 @@ const ATTACK_MODES = {
     buildContext: buildAttackContext,
     buildSystem(contextBlock, aiRules) {
       return applyRules(buildSystem(
-        'You are cue, helping the user during a live meeting. A screenshot may be attached; if '
-        + 'one is not, work from the conversation. It may show slides, a document, a dashboard '
+        'You are cue, helping the user during a live meeting. Call read_screen only when the '
+        + 'conversation alone is insufficient; it may show slides, a document, a dashboard '
         + 'or code being discussed. Check claims against the available evidence.\n\n'
         + NO_SEARCH_RULES + '\n\n'
         + outputFormat('exactly 1') + '\n\n'

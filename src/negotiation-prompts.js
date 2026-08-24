@@ -12,6 +12,7 @@ const { buildDocumentsBlock } = require('./attack-context');
 const NEGOTIATION_RULES =
   'You have no internet access, so never invent market rates, comparable salaries or '
   + 'benchmark figures. If a number would help, say what the user should ask THEM for.\n'
+  + 'You can call read_screen when the conversation alone is insufficient to know what is visibly on screen; use it only for visible material, never for information already stated in the conversation.\n'
   + '- Never advise conceding a number the user has not already decided to concede.\n'
   + '- Whoever names a figure first anchors the deal. If they have not named one, do not let '
   + 'the user name one either — hand them a question instead.\n'
@@ -84,7 +85,7 @@ const NEGOTIATION_MODES = {
     buildContext: buildNegotiationContext,
     buildSystem(contextBlock, aiRules) {
       return applyRules(buildSystem(
-        ROLE + 'A screenshot may be attached; if one is not, work from the conversation. Assess where this negotiation actually stands right now.\n\n'
+        ROLE + 'Call read_screen only when the conversation alone is insufficient to assess what is visibly being discussed. Assess where this negotiation actually stands right now.\n\n'
         + 'Give NOTE: lines for — who anchored first and at what; what each side has conceded '
         + 'so far; what they have signalled they care about beyond price; and where the user '
         + 'currently has leverage. End with the single biggest risk in the next five minutes.\n\n'

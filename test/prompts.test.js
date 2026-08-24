@@ -91,7 +91,7 @@ test('leetcode mode never applies AI rules (coding answers stay strict)', () => 
   assert.match(withRules, /competitive programmer/);
 });
 
-test('screen-unavailable fallback stays silent and screen prompts are conditional', () => {
+test('screen-unavailable fallback stays silent and every persona can request a screen read', () => {
   const main = fs.readFileSync(path.join(__dirname, '..', 'main.js'), 'utf8');
   assert.match(main, /Never mention or imply missing screenshots/);
   assert.match(main, /Never apologize, explain, or ask or offer the user to describe, paste, or provide screen content/);
@@ -104,7 +104,11 @@ test('screen-unavailable fallback stays silent and screen prompts are conditiona
   ];
   for (const mode of screenModes) {
     const prompt = mode.buildSystem(null);
-    assert.match(prompt, /screenshot may be attached; if one is not, work from (the )?conversation/i);
-    assert.doesNotMatch(prompt, /screenshot (?:of [^.]+ )?(?:is|has been) attached|screenshot contains/i);
+    assert.match(prompt, /read_screen/i);
+    assert.match(prompt, /conversation alone is insufficient/i);
+  }
+
+  for (const table of [MODES, ATTACK_MODES, NEGOTIATION_MODES, DECODE_MODES, STANDUP_MODES, NORMAL_MODES]) {
+    for (const mode of Object.values(table)) assert.match(mode.buildSystem(null), /read_screen/i);
   }
 });

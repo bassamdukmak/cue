@@ -3,6 +3,7 @@ const test = require('node:test');
 const Module = require('node:module');
 const { EventEmitter } = require('node:events');
 const { OPTIONAL_API_KEY_PLACEHOLDER } = require('../src/openai-compatible');
+const { PERSONAS } = require('../src/personas');
 
 let capturedClientOptions = null;
 let capturedCompletionRequest = null;
@@ -33,7 +34,7 @@ Module._load = function loadWithOpenAIStub(request, parent, isMain) {
   return originalModuleLoad.call(this, request, parent, isMain);
 };
 
-const { createLLM, formatProviderErrorMessage, isQuotaError, CURRENT_GEMINI_DEFAULT, CURRENT_DEEPSEEK_DEFAULT } = require('../src/llm');
+const { createLLM, formatProviderErrorMessage, isQuotaError, CURRENT_GEMINI_DEFAULT, CURRENT_DEEPSEEK_DEFAULT, buildReadScreenTool } = require('../src/llm');
 
 test.after(() => {
   Module._load = originalModuleLoad;
@@ -212,6 +213,72 @@ test('search tool description advertises configured optional sources', async () 
   const llm = createLLM(createCustomSettings({ apiKeys: { custom: 'gateway-token', fmp: 'fmp-key', finnhub: 'finnhub-key' } }));
   await llm.stream({ system: 's', turns: [{ role: 'user', text: 'verify it' }], onToken: () => {}, onToolCall: async () => null });
   assert.match(capturedCompletionRequest.tools[0].function.description, /FMP, Finnhub/);
+});
+
+test('read_screen is offered whenever a persona supplies the screen callback', async () => {
+  const tool = buildReadScreenTool();
+  assert.equal(tool.function.name, 'read_screen');
+  assert.match(tool.function.description, /slide, diagram, dashboard, spreadsheet, code/i);
+  assert.match(tool.function.description, /conversation already answers/i);
+
+  for (const persona of Object.keys(PERSONAS)) {
+    const llm = createLLM(createCustomSettings());
+    await llm.stream({
+      system: `s:${persona}`, turns: [{ role: 'user', text: 'help' }], onToken: () => {},
+      onScreenRequest: async () => ({ text: 'unused' })
+    });
+    assert.deepEqual(capturedCompletionRequest.tools.map((entry) => entry.function.name), ['read_screen'], persona);
+  }
+});
+
+test('accumulates split read_screen calls and gives its error result to the model', async () => {
+  mockStreams = [
+    [
+      { choices: [{ delta: { tool_calls: [{ index: 0, id: 'screen-1', type: 'function', function: { name: 'read_', arguments: '{"reason":"' } }] } }] },
+      { choices: [{ delta: { tool_calls: [{ index: 0, function: { name: 'screen', arguments: 'read the slide"}' } }] } }] },
+    ],
+    [{ choices: [{ delta: { content: 'I cannot read it.' } }] }],
+  ];
+  const reasons = [];
+  const llm = createLLM(createCustomSettings());
+  const reply = await llm.stream({
+    system: 's', turns: [{ role: 'user', text: 'what does this slide say?' }], onToken: () => {},
+    onScreenRequest: async (reason) => {
+      reasons.push(reason);
+      return { error: 'screen recording permission not granted' };
+    }
+  });
+
+  assert.deepEqual(reasons, ['read the slide']);
+  assert.deepEqual(capturedCompletionRequests[0].tools.map((entry) => entry.function.name), ['read_screen']);
+  assert.match(capturedCompletionRequests[1].messages.at(-1).content, /screen recording permission not granted/);
+  assert.equal(reply, 'I cannot read it.');
+});
+
+test('caps screen reads at one while allowing one search in the same request', async () => {
+  mockStreams = [
+    [{ choices: [{ delta: { tool_calls: [
+      { index: 0, id: 'search-1', type: 'function', function: { name: 'search_facts', arguments: '{"query":"moon"}' } },
+      { index: 1, id: 'screen-1', type: 'function', function: { name: 'read_screen', arguments: '{}' } },
+      { index: 2, id: 'screen-2', type: 'function', function: { name: 'read_screen', arguments: '{}' } },
+    ] } }] }],
+    [{ choices: [{ delta: { content: 'combined answer' } }] }],
+  ];
+  let searches = 0;
+  let screenReads = 0;
+  const llm = createLLM(createCustomSettings());
+  await llm.stream({
+    system: 's', turns: [{ role: 'user', text: 'check it' }], onToken: () => {},
+    onToolCall: async () => { searches += 1; return { summary: 'search result' }; },
+    onScreenRequest: async () => { screenReads += 1; return { text: 'screen result' }; }
+  });
+
+  assert.equal(searches, 1);
+  assert.equal(screenReads, 1);
+  assert.deepEqual(capturedCompletionRequests[0].tools.map((entry) => entry.function.name), ['search_facts', 'read_screen']);
+  const toolMessages = capturedCompletionRequests[1].messages.filter((message) => message.role === 'tool');
+  assert.equal(toolMessages.length, 3);
+  assert.match(toolMessages[2].content, /Only one screen read is allowed/);
 });
 
 test('Claude CLI remains ready without a key and reports a clear missing-binary error', async () => {

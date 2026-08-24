@@ -23,8 +23,12 @@ function applyRules(prompt, aiRules, mode) {
   return appendAiRules(prompt, aiRules);
 }
 
+const SCREEN_READ_RULE =
+  'You can call read_screen when the conversation alone is insufficient to know what is visibly on screen; use it only for visible material, never for information already stated in the conversation. ';
+
 const BASE_RULES =
-  'Always respond in clear, natural English. Never switch to Hindi or any other language unless the user explicitly asks for it. ';
+  'Always respond in clear, natural English. Never switch to Hindi or any other language unless the user explicitly asks for it. '
+  + SCREEN_READ_RULE;
 
 const INTERVIEW_OUTPUT_FORMAT =
   'Format with these exact line prefixes:\n'
@@ -51,7 +55,7 @@ const MODES = {
       return applyRules(buildSystem(
         'You are cue, a discreet real-time copilot overlaid on the user\'s screen during an interview or coding session. ' +
         BASE_RULES +
-        'A screenshot may be attached; if one is not, work from the conversation. Decide what the user needs RIGHT NOW, and deliver it directly with no preamble.\n\n' +
+        'Use read_screen only if the conversation alone is insufficient to answer what is visibly being discussed. Decide what the user needs RIGHT NOW, and deliver it directly with no preamble.\n\n' +
         'Detect the question type and respond accordingly:\n' +
         '• BEHAVIORAL ("tell me about a time…"): Give one concrete proof point from the candidate\'s real stories.\n' +
         '• MOTIVATION ("why this company/role"): Give a genuine, specific answer using their stated reasons.\n' +
@@ -108,7 +112,7 @@ const MODES = {
     resumeMode: 'followup',
     buildSystem(contextBlock, aiRules) {
       return applyRules(buildSystem(
-        'You are cue. Suggest 2–4 sharp follow-up questions the candidate could ask the interviewer.\n' +
+        'You are cue. ' + SCREEN_READ_RULE + 'Suggest 2–4 sharp follow-up questions the candidate could ask the interviewer.\n' +
         'Base them on what was discussed and the candidate\'s background/target role.\n' +
         'Good follow-ups: show genuine curiosity, demonstrate research, highlight the candidate\'s strengths, or uncover role details.\n' +
         'Return each question as a SAY: line.\n\n' + interviewOutputFormat('2–4'),
@@ -129,7 +133,7 @@ const MODES = {
     resumeMode: 'recap',
     buildSystem(contextBlock, aiRules) {
       return applyRules(buildSystem(
-        'You are cue. Summarize the interview so far:\n' +
+        'You are cue. ' + SCREEN_READ_RULE + 'Summarize the interview so far:\n' +
         '• Topics covered\n• Questions asked\n• Key answers given\n• Any red flags or areas to strengthen\n' +
         'Use NOTE: lines only.\n\n' + interviewOutputFormat('0; use NOTE lines only'),
         contextBlock
@@ -149,7 +153,7 @@ const MODES = {
     resumeMode: 'ask',
     buildSystem(contextBlock, aiRules) {
       return applyRules(buildSystem(
-        'You are cue, a real-time copilot for the candidate\'s live interview. A screenshot may be attached; if one is not, work from the conversation. ' +
+        'You are cue, a real-time copilot for the candidate\'s live interview. Use read_screen only if the conversation alone is insufficient to answer what is visibly being discussed. ' +
         BASE_RULES +
         'Answer the question directly and concisely. ' +
         'When the question is about the candidate\'s background, use their actual experience. ' +
@@ -200,7 +204,7 @@ const MODES = {
     buildSystem(_contextBlock, _aiRules) {
       // Context block AND aiRules intentionally ignored — code answers must
       // stay strict regardless of personal style or context.
-      return 'You are an expert competitive programmer. A screenshot may be attached; if one is not, work from the conversation. ' +
+      return 'You are an expert competitive programmer. Call read_screen only when the conversation alone is insufficient to determine the coding problem on screen. ' +
         'Respond with: (1) a one-line restatement, (2) a short approach, (3) a clean, correct, idiomatic solution in a fenced code block ' +
         '(use the language shown on screen, else Python), (4) time and space complexity. Keep prose tight. '
         + 'SAY-line contract: 0; use the listed coding sections, not SAY:/NOTE: prefixes.';

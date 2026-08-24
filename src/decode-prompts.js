@@ -16,6 +16,7 @@ const { buildDocumentsBlock } = require('./attack-context');
 const DECODE_RULES =
   'You have no internet access, so everything you explain is recalled from training '
   + 'and may be out of date.\n'
+  + 'You can call read_screen when the conversation alone is insufficient to know what is visibly on screen; use it only for visible material, never for information already stated in the conversation.\n'
   + '- Separate the two kinds of unfamiliar term explicitly. A STANDARD term (an industry '
   + 'acronym, a public tool, a known technique) you may define directly. An INTERNAL term '
   + '(a project codename, a team name, a system only this company runs) you must NOT guess '
@@ -74,8 +75,8 @@ const DECODE_MODES = {
     buildContext: buildDecodeContext,
     buildSystem(contextBlock, aiRules) {
       return applyRules(buildSystem(
-        ROLE + 'A screenshot may be attached; if one is not, work from the conversation. It may '
-        + 'show a diagram, dashboard, spreadsheet or code being discussed. Explain the available context.\n\n'
+        ROLE + 'Call read_screen only when the conversation alone is insufficient; it may show a '
+        + 'diagram, dashboard, spreadsheet or code being discussed. Explain the available context.\n\n'
         + DECODE_RULES + '\n\n' + outputFormat('0 or 1; only ask for an internal term') + '\n\n'
         + 'Say what it IS first, then only the parts that matter. Skip decoration.',
         contextBlock), aiRules, 'decodeScreen');

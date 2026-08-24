@@ -22,6 +22,21 @@ function buildSearchFactsTool(settings) {
   }
   };
 }
+
+function buildReadScreenTool() {
+  return {
+    type: 'function',
+    function: {
+      name: 'read_screen',
+      description: 'Read what is currently on the user\'s screen when answering requires seeing a slide, diagram, dashboard, spreadsheet, code, or an on-screen number being discussed. Do not call this for information the conversation already answers.',
+      parameters: {
+        type: 'object',
+        properties: { reason: { type: 'string', description: 'Optional short reason to show while the screen is read.' } },
+        additionalProperties: false
+      }
+    }
+  };
+}
 // gemini-2.0-flash was Google's default here until it was deprecated (Feb 2026)
 // and fully retired (Mar 3 2026) — every request against it now 404s with a
 // generic "exception parsing response" body. gemini-2.5-flash is the model
@@ -175,7 +190,7 @@ function createOpenAIRequest({ model, messages, maxTokens, isDeepSeek, thinkingE
   return request;
 }
 
-async function streamOpenAI({ apiKey, baseURL, model, system, turns, imageDataUrl, maxTokens, onToken, onActivity, onUsage, thinkingEnabled, mode, onToolCall, searchTool }) {
+async function streamOpenAI({ apiKey, baseURL, model, system, turns, imageDataUrl, maxTokens, onToken, onActivity, onUsage, thinkingEnabled, mode, onToolCall, onScreenRequest, searchTool, screenTool }) {
   const supportsVision = modelSupportsVision(model);
   const OpenAI = require('openai');
   const client = new OpenAI(baseURL ? { apiKey, baseURL } : { apiKey });
@@ -194,17 +209,45 @@ async function streamOpenAI({ apiKey, baseURL, model, system, turns, imageDataUr
     }
   });
   const isDeepSeek = /deepseek/i.test(baseURL || '') || /^deepseek/i.test(model || '');
+  const tools = [
+    ...(onToolCall && searchTool ? [searchTool] : []),
+    ...(onScreenRequest && screenTool ? [screenTool] : []),
+  ];
   const first = await consumeOpenAIStream(await client.chat.completions.create(createOpenAIRequest({
-    model, messages, maxTokens, isDeepSeek, thinkingEnabled, mode, tools: onToolCall ? [searchTool] : null
+    model, messages, maxTokens, isDeepSeek, thinkingEnabled, mode, tools: tools.length ? tools : null
   })), { model, onToken, onActivity, onUsage });
-  const toolCall = onToolCall && first.toolCalls.find((call) => call.function.name === 'search_facts');
-  if (!toolCall) return first.full;
+  const calledTools = [];
+  const toolResults = [];
+  let searched = false;
+  let readScreen = false;
+  for (const toolCall of first.toolCalls) {
+    const name = toolCall.function.name;
+    if (name === 'search_facts' && onToolCall) {
+      let query = '';
+      try { query = JSON.parse(toolCall.function.arguments || '{}').query || ''; } catch (_) {}
+      const result = searched
+        ? { error: 'Only one factual search is allowed per request.' }
+        : await onToolCall(String(query), onActivity);
+      searched = true;
+      calledTools.push(toolCall);
+      toolResults.push({ tool_call_id: toolCall.id, result: result || { summary: 'No result available.' } });
+    } else if (name === 'read_screen' && onScreenRequest) {
+      let reason = '';
+      try { reason = JSON.parse(toolCall.function.arguments || '{}').reason || ''; } catch (_) {}
+      const result = readScreen
+        ? { error: 'Only one screen read is allowed per request.' }
+        : await onScreenRequest(String(reason), onActivity);
+      readScreen = true;
+      calledTools.push(toolCall);
+      toolResults.push({ tool_call_id: toolCall.id, result: result || { error: 'screen text extraction failed: no result available' } });
+    }
+  }
+  if (!calledTools.length) return first.full;
 
-  let query = '';
-  try { query = JSON.parse(toolCall.function.arguments || '{}').query || ''; } catch (_) {}
-  const toolResult = await onToolCall(String(query), onActivity);
-  messages.push({ role: 'assistant', content: first.full || null, tool_calls: [toolCall] });
-  messages.push({ role: 'tool', tool_call_id: toolCall.id, content: JSON.stringify(toolResult || { summary: 'No result available.' }) });
+  messages.push({ role: 'assistant', content: first.full || null, tool_calls: calledTools });
+  toolResults.forEach(({ tool_call_id, result }) => {
+    messages.push({ role: 'tool', tool_call_id, content: JSON.stringify(result) });
+  });
   const final = await consumeOpenAIStream(await client.chat.completions.create(createOpenAIRequest({
     model, messages, maxTokens, isDeepSeek, thinkingEnabled, mode
   })), { model, onToken, onActivity, onUsage });
@@ -529,7 +572,12 @@ function createLLM(settings, { forceTier } = {}) {
     configurationError,
     async stream(params) {
       if (!ready) throw new Error(configurationError || `Complete the ${provider} provider settings.`);
-      const args = { apiKey, baseURL, endpoint, model, maxTokens, thinkingEnabled: tier === 'smart', ...params, searchTool: params.onToolCall ? buildSearchFactsTool(settings) : null, turns: sanitizeTurns(params.turns) };
+      const args = {
+        apiKey, baseURL, endpoint, model, maxTokens, thinkingEnabled: tier === 'smart', ...params,
+        searchTool: params.onToolCall ? buildSearchFactsTool(settings) : null,
+        screenTool: params.onScreenRequest ? buildReadScreenTool() : null,
+        turns: sanitizeTurns(params.turns)
+      };
       try {
         if (provider === 'openai') return await streamOpenAI(args);
         if (provider === CUSTOM_PROVIDER) return await streamOpenAI(args);
@@ -548,4 +596,4 @@ function createLLM(settings, { forceTier } = {}) {
   };
 }
 
-module.exports = { modelSupportsVision, createLLM, formatProviderErrorMessage, isQuotaError, CURRENT_GEMINI_DEFAULT, CURRENT_DEEPSEEK_DEFAULT, streamOpenAI, streamClaudeCli };
+module.exports = { modelSupportsVision, createLLM, formatProviderErrorMessage, isQuotaError, CURRENT_GEMINI_DEFAULT, CURRENT_DEEPSEEK_DEFAULT, streamOpenAI, streamClaudeCli, buildReadScreenTool };

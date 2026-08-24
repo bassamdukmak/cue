@@ -7,6 +7,7 @@ const { buildDocumentsBlock } = require('./attack-context');
 
 const NORMAL_RULES =
   'A factual-search tool exists, but it is slow: use it only when a specific factual claim is worth verifying. '
+  + 'You can call read_screen when the conversation alone is insufficient to know what is visibly on screen; use it only for visible material, never for information already stated in the conversation. '
   + 'Never invent facts, figures, dates, names or sources. Use only the conversation, screen, loaded documents, user message, and any search result as evidence.\n'
   + '- Answer directly and plainly. If the available context is not enough, say what is missing.\n'
   + '- A verified search result may be stated flatly and tagged "conf: sourced".\n'
@@ -55,7 +56,7 @@ const NORMAL_MODES = {
     buildContext: buildNormalContext,
     buildSystem(contextBlock, aiRules) {
       return applyRules(buildSystem(
-        ROLE + 'A screenshot may be attached; if one is not, work from the conversation. Answer the user\'s immediate need using the available context. '
+        ROLE + 'Call read_screen only when the conversation alone is insufficient to answer the user\'s immediate need. '
         + 'Explain what matters, then give a concise next step when useful.\n\n'
         + NORMAL_RULES + '\n\n' + outputFormat('0 or 1; add one only when a next step is useful'),
         contextBlock), aiRules, 'helpScreen');

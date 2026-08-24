@@ -73,6 +73,7 @@ let transcriptSeq = 0;
 const FLUSH_MS = 900;
 const STREAM_INACTIVITY_MS = 25000; // abort a stalled LLM stream so state.busy can't wedge forever
 const AUTO_SCREEN_COOLDOWN_MS = 45000;
+const SCREEN_TEXT_CACHE_MS = 30000;
 const MIN_BYTES = Math.floor(16000 * 2 * 0.12); // ~0.12s
 const RMS_GATE = 180;
 let flushTimer = null;
@@ -181,6 +182,45 @@ async function handleSearchToolCall(query, onActivity) {
   const result = await searchFacts(query, { apiKeys: settings.apiKeys, searxngUrl: settings.searxngUrl });
   if (mode === 'auto') send('status', { message: '', muted: true });
   return result || { summary: 'No configured search source returned a result for this query.', source: 'No source', url: null };
+}
+
+async function handleScreenToolCall(_reason, onActivity) {
+  const cached = autoScreenText;
+  if (cached?.text && Date.now() - cached.ts < SCREEN_TEXT_CACHE_MS) return { text: cached.text };
+
+  send('status', { message: 'reading screen…', muted: true });
+  onActivity?.();
+  try {
+    let imageDataUrl;
+    try {
+      imageDataUrl = await captureScreenshot();
+    } catch (error) {
+      recordEvent({ level: 'warn', event: 'screen_tool_capture_failed', msg: error?.message || String(error), frame: 'handleScreenToolCall' });
+      return { error: 'screen recording permission not granted' };
+    }
+    if (!imageDataUrl) return { error: 'screen recording permission not granted' };
+    // Tool-result messages cannot carry an image, even for a vision-capable model,
+    // so this mid-stream screen read always returns local OCR text.
+    let ocr;
+    try {
+      ocr = await extractTextFromImage(imageDataUrl);
+    } catch (error) {
+      recordEvent({ level: 'warn', event: 'screen_tool_ocr_failed', msg: error?.message || String(error), frame: 'handleScreenToolCall' });
+      return { error: `screen text extraction failed: ${error?.message || String(error)}` };
+    }
+    const text = ocr.text && ocr.text.trim();
+    if (text) {
+      autoScreenText = { text, ts: Date.now() };
+      return { text };
+    }
+    return { error: `screen text extraction failed: ${ocr.error || 'no text was found'}` };
+  } catch (error) {
+    recordEvent({ level: 'warn', event: 'screen_tool_read_failed', msg: error?.message || String(error), frame: 'handleScreenToolCall' });
+    return { error: `screen text extraction failed: ${error?.message || String(error)}` };
+  } finally {
+    onActivity?.();
+    send('status', { message: '' });
+  }
 }
 
 function clearEmptyTranscriptStatus() {
@@ -966,6 +1006,7 @@ async function runFeature(mode, userText, auto = false, ephemeral = false) {
           onToolCall: ['attack', 'normal'].includes(persona) && (settings.searchMode || 'ask') !== 'off'
             ? handleSearchToolCall
             : null,
+          onScreenRequest: handleScreenToolCall,
           onToken: (t) => { if (streamSettled) return; rearm(); send('llm:token', { text: t }); },
           onActivity: () => { if (!streamSettled) rearm(); },
           onUsage: recordUsage
@@ -1019,6 +1060,7 @@ ipcMain.on('action:invoke', (_e, { id, kind, payload } = {}) => {
     answer: ['answerThis', payload],
     define: ['answerThis', 'Define: ' + payload],
     challenge: ['answerThis', payload],
+    screen: ['assist', ''],
     say: ['say', ''],
     recap: ['recap', ''],
   };
