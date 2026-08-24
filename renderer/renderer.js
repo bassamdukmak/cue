@@ -1223,6 +1223,13 @@
     setLiveDotState(speaking ? 'speaking' : 'idle');
   });
   cue.on('llm:start', ({ userBubble, small, category, auto = false }) => {
+    if (auto) {
+      const previousAuto = messages.querySelector('.response-group.auto-response');
+      if (previousAuto) {
+        previousAuto.remove();
+        responseCount = Math.max(0, responseCount - 1);
+      }
+    }
     responseCount++;
     if (responseCount > MAX_RESPONSES) {
       const oldest = messages.querySelector('.response-group');
@@ -1231,11 +1238,12 @@
     }
     const group = document.createElement('div');
     group.className = 'response-group';
+    if (auto) group.classList.add('auto-response');
     const sep = document.createElement('div');
     sep.className = 'response-sep';
     sep.textContent = new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
     group.appendChild(sep);
-    if (userBubble) {
+    if (!auto && userBubble) {
       const b = document.createElement('div');
       b.className = 'user-bubble';
       b.textContent = userBubble;
