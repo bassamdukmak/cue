@@ -719,7 +719,7 @@
         el.classList.add('loading');
         el.disabled = true;
       });
-      cue.actionInvoke(action.id, action.kind, action.payload);
+      cue.actionInvoke({ id: action.id, kind: action.kind, payload: action.payload });
     });
     return chip;
   }
@@ -1198,10 +1198,14 @@
     // so that the getDisplayMedia request has a fresh user gesture.
     // Here we only start the mic (no gesture required) and stop everything on deactivate.
     if (active) {
-      clearMessages();
-      clearEphemeralAnswer();
-      clearActionChips();
-      responseCount = 0;
+      // A session start while an answer is still streaming must not kill it —
+      // wiping mid-stream loses the very response the user is reading.
+      if (!busy) {
+        clearMessages();
+        clearEphemeralAnswer();
+        clearActionChips();
+        responseCount = 0;
+      }
       startMic();
       // Don't auto-open sidebar — user can toggle it manually
     } else {

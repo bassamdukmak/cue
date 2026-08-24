@@ -18,7 +18,7 @@ test('auto and action responses replace the single ephemeral answer and omit the
 test('action chips render in both surfaces and remain clickable in the overlay', () => {
   assert.match(html, /id="ephemeral-answer"[\s\S]*id="pin-answer-btn"[\s\S]*id="action-strip"/);
   assert.match(renderer, /const hosts = \[\$\('#action-strip'\), \$\('#actions-list'\)\]/);
-  assert.match(renderer, /cue\.actionInvoke\(action\.id, action\.kind, action\.payload\)/);
+  assert.match(renderer, /cue\.actionInvoke\(\{ id: action\.id, kind: action\.kind, payload: action\.payload \}\)/);
   assert.match(renderer, /#ephemeral-answer, #action-strip/);
   assert.match(css, /#ephemeral-answer, #action-strip, #action-row/);
 });
