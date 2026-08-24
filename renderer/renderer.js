@@ -684,6 +684,22 @@
     if (!goalControl.contains(event.target)) goalPopover.classList.add('hidden');
   });
 
+  const moreControl = $('#more-control');
+  const moreMenu = $('#more-menu');
+  const moreBtn = $('#more-btn');
+  function closeMoreMenu() {
+    moreMenu.classList.add('hidden');
+    moreBtn.setAttribute('aria-expanded', 'false');
+  }
+  moreBtn.addEventListener('click', () => {
+    const opening = moreMenu.classList.contains('hidden');
+    moreMenu.classList.toggle('hidden', !opening);
+    moreBtn.setAttribute('aria-expanded', String(opening));
+  });
+  document.addEventListener('click', (event) => {
+    if (!moreControl.contains(event.target)) closeMoreMenu();
+  });
+
   // ---- live insights panel ------------------------------------------------
   // Fed by the main process on its own timer; this side only renders.
   let insightsDismissed = false;
@@ -790,11 +806,32 @@
     showStatus('Insights hidden — toggle Auto off and on to bring it back.');
   });
 
-  // Hide / collapse
+  // One path serves the button and global shortcut, so no sibling surface survives.
+  let hiddenOverlayState = null;
   function toggleHide() {
-    const collapsed = $('#panel').classList.toggle('collapsed');
-    $('#hide-btn').classList.toggle('collapsed', collapsed);
-    $('#live-dot').style.display = collapsed ? 'none' : '';
+    const body = document.body;
+    const panel = $('#panel');
+    const panelWrap = $('#panel-wrap');
+    const hiding = !body.classList.contains('overlay-hidden');
+    if (hiding) {
+      hiddenOverlayState = {
+        panelCollapsed: panel.classList.contains('collapsed'),
+        panelWrapCollapsed: panelWrap.classList.contains('collapsed'),
+        insightsHidden: $('#insights-panel').classList.contains('hidden'),
+        sidebarHidden: $('#transcript-sidebar').classList.contains('hidden'),
+      };
+      panel.classList.add('collapsed');
+      panelWrap.classList.add('collapsed');
+      body.classList.add('overlay-hidden');
+    } else {
+      body.classList.remove('overlay-hidden');
+      panel.classList.toggle('collapsed', !!hiddenOverlayState?.panelCollapsed);
+      panelWrap.classList.toggle('collapsed', !!hiddenOverlayState?.panelWrapCollapsed);
+      $('#insights-panel').classList.toggle('hidden', !!hiddenOverlayState?.insightsHidden);
+      $('#transcript-sidebar').classList.toggle('hidden', !!hiddenOverlayState?.sidebarHidden);
+      hiddenOverlayState = null;
+    }
+    $('#hide-btn').classList.toggle('collapsed', hiding);
   }
   $('#hide-btn').addEventListener('click', toggleHide);
   cue.on('hide:toggle', toggleHide);
@@ -1097,7 +1134,7 @@
   // History button toggle
   const historyBtn = document.getElementById('history-btn');
   if (historyBtn) {
-    historyBtn.innerHTML = icon('message-square-text', { size: 15 });
+    historyBtn.querySelector('.ic').innerHTML = icon('message-square-text', { size: 15 });
     historyBtn.addEventListener('click', toggleSidebar);
   }
 
@@ -1561,18 +1598,8 @@
     bar.classList.remove('hidden');
     const models = Object.keys(totals.byModel || {});
     const cost = typeof totals.costUsd === 'number' ? totals.costUsd : estimateSessionCost(totals.byModel);
-    const cachedPct = totals.promptTokens
-      ? Math.round((totals.cachedTokens / totals.promptTokens) * 100) : 0;
-    const parts = [
-      `${totals.calls} call${totals.calls === 1 ? '' : 's'}`,
-      `${(totals.promptTokens / 1000).toFixed(1)}k in`,
-      `${(totals.completionTokens / 1000).toFixed(1)}k out`,
-    ];
-    if (totals.cachedTokens) parts.push(`${cachedPct}% cached`);
-    if (cost !== null) parts.push(`~$${cost.toFixed(4)}`);
     const lifetime = payload?.lifetime;
-    if (lifetime) parts.push(`| total $${(Number(lifetime.costUsd) || 0).toFixed(2)}${formatLifetimeSince(lifetime.since)}`);
-    $('#usage-text').textContent = parts.join(' · ');
+    $('#usage-text').textContent = cost === null ? `${totals.calls || 0} calls` : `~$${cost.toFixed(4)}`;
     const unpriced = totals.unpricedModels || (cost === null ? models : []);
     $('#usage-bar').title = unpriced.length
       ? `Token usage this session. Unpriced models contribute $0: ${unpriced.join(', ')}.`
@@ -1631,7 +1658,10 @@
     scrim.classList.remove('hidden');
     refreshWhisperModels();
   }
-  $('#more-btn').addEventListener('click', openSettings);
+  $('#settings-menu-btn').addEventListener('click', () => {
+    closeMoreMenu();
+    openSettings();
+  });
   $('#s-close').addEventListener('click', () => { void closeSettings(); });
   scrim.addEventListener('click', (e) => { if (e.target === scrim) void closeSettings(); });
 
@@ -1925,6 +1955,7 @@
     const spec = PERSONA_INTENSITIES[persona] || PERSONA_INTENSITIES.interview;
     const chosen = spec.levels[level - 1] || spec.levels[spec.defaultLevel - 1];
     const control = $('#intensity-control');
+    document.documentElement.style.setProperty('--accent', spec.color);
     control.dataset.persona = persona;
     control.style.setProperty('--intensity-color', spec.color);
     $('#intensity-label').textContent = spec.title + ' · ' + chosen[0];
@@ -2249,7 +2280,7 @@
   function setIgnore(v) { if (v !== ignoring) { ignoring = v; cue.setIgnoreMouse(v); } }
   document.addEventListener('mousemove', (e) => {
     const el = document.elementFromPoint(e.clientX, e.clientY);
-    const overUI = !!(el && el.closest && el.closest('#toolbar, #panel-wrap, #ephemeral-answer, #action-strip, #listen-toggle, .search-chip, #mode-menu, #goal-popover, #intensity-popover, #insights-panel, #transcript-sidebar, #settings-scrim, #onboard-scrim, #consent-scrim'));
+    const overUI = !!(el && el.closest && el.closest('#toolbar, #panel-wrap, #ephemeral-answer, #action-strip, #listen-toggle, .search-chip, #mode-menu, #goal-popover, #intensity-popover, #more-control, #more-menu, #settings-menu-btn, #insights-panel, #transcript-sidebar, #settings-scrim, #onboard-scrim, #consent-scrim'));
     setIgnore(!overUI);
   });
   setIgnore(true); // start fully click-through; hovering the panel re-enables it
