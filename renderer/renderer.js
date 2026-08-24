@@ -29,6 +29,7 @@
   let caretEl = null;
   let responseCount = 0;
   const MAX_RESPONSES = 20;
+  let actionChips = []; // Wave A plumbing; a later renderer wave owns display.
 
   const messages = $('#messages');
 
@@ -694,6 +695,10 @@
     $('#insights-empty').classList.remove('hidden');
   });
 
+  cue.on('actions:new', ({ actions }) => {
+    actionChips = Array.isArray(actions) ? actions : [];
+  });
+
   $('#insights-close-btn').addEventListener('click', () => {
     insightsDismissed = true;
     syncInsightsPanel();
@@ -1306,7 +1311,7 @@
     // Auto-fill the input box with Them (interviewer) speech
     if (channel === 'them') {
       cancelSoftClear(); // Interviewer is speaking, cancel any pending clear
-      autoFillInputFromSTT(text);
+      if (!settings.chipQuestions) autoFillInputFromSTT(text);
     } else {
       // User spoke — soft clear (don't immediately wipe, wait to see if they're really answering)
       softClearSTTFill();

@@ -413,7 +413,7 @@ test('every helper called in main.js is actually imported from its module', () =
   // applyPersonaButtonLabels broke boot, and a lost resetAutoSuggestTrigger broke
   // EVERY capture start — the app could never begin listening.
   const src = require('fs').readFileSync(require('path').join(__dirname, '..', 'main.js'), 'utf8');
-  for (const helper of ['resetAutoSuggestTrigger', 'shouldScheduleAutoSuggest', 'shouldCheckScreen', 'extractTextFromImage', 'searchFacts', 'getIntensityLine', 'buildDocumentsBlock', 'parseInsights']) {
+  for (const helper of ['resetAutoSuggestTrigger', 'shouldScheduleAutoSuggest', 'shouldCheckScreen', 'extractTextFromImage', 'searchFacts', 'getIntensityLine', 'buildDocumentsBlock', 'parseInsights', 'buildActionsSystem', 'buildActionsTurn', 'parseActions']) {
     if (new RegExp('\\b' + helper + '\\(').test(src)) {
       assert.match(src, new RegExp('require\\([^)]*\\)[^;]*' + helper + '|' + helper + '[^;]*= require|\\{[^}]*' + helper + '[^}]*\\} = require'),
         helper + ' is called in main.js but never imported');

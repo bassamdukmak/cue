@@ -49,6 +49,7 @@ const DEFAULTS = {
   // 'interview' keeps every original prompt; 'attack' swaps the six
   // conversational modes for claim-challenging ones.
   autoSuggest: false,    // suggest automatically when the other side stops talking
+  chipQuestions: true,
   autoListen: true,
   persona: 'interview',
   intensity: { normal: 3, interview: 3, attack: 2, negotiation: 3, decode: 3, standup: 3 },

@@ -80,7 +80,8 @@ test('search is off, auto-listen is on by default, and Claude CLI models are pre
     const store = loadStore(directory);
     const settings = store.getSettings();
     // Off by default: an ask-gated search holds the busy lock behind a click.
-  assert.equal(settings.searchMode, 'off');
+    assert.equal(settings.searchMode, 'off');
+    assert.equal(settings.chipQuestions, true);
     assert.equal(settings.autoListen, true);
     assert.equal(settings.apiKeys.github, '');
     assert.deepEqual(settings.models.claudecli, { fast: 'haiku', smart: 'sonnet' });

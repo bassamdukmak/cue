@@ -1,6 +1,7 @@
 const { app, BrowserWindow, ipcMain, globalShortcut, screen, session, desktopCapturer, shell, dialog, systemPreferences } = require('electron');
 const path = require('path');
 const os = require('os');
+const fs = require('fs');
 const store = require('./src/store');
 const { captureScreenshot } = require('./src/screen');
 const { extractTextFromImage } = require('./src/ocr');
@@ -12,6 +13,7 @@ const { createLLM, modelSupportsVision } = require('./src/llm');
 const { MODES } = require('./src/prompts');
 const { resolveMode } = require('./src/personas');
 const { buildInsightsSystem, buildInsightsTurn, parseInsights } = require('./src/insights-prompts');
+const { buildActionsSystem, buildActionsTurn, parseActions } = require('./src/actions-prompts');
 const { rms16 } = require('./src/wav');
 const { createStreamingSTT } = require('./src/stt-streaming');
 const { AdaptiveVAD, AudioRingBuffer } = require('./src/vad');
@@ -88,6 +90,7 @@ let autoScreenText = null;
 let autoScreenLastCheck = 0;
 let autoScreenReading = false;
 const pendingSearchRequests = new Map();
+let sessionStartedAt = null;
 
 // -------- streaming STT state --------
 let streamingSTT = { you: null, them: null }; // streaming STT instances per channel
@@ -209,7 +212,7 @@ function getWhisperRuntime() {
 
 // -------- automatic suggestions --------
 // Pressing a button mid-sentence is exactly the moment the user cannot spare, so
-// auto mode runs the persona's main suggestion for them.
+// auto mode proposes clickable actions instead of running a full answer.
 //
 // It waits for the other side to stop talking rather than firing per utterance:
 // a sentence fragment produces a useless suggestion, and every run costs a real
@@ -219,6 +222,9 @@ const AUTO_SUGGEST_QUIET_MS = 2500;   // silence that counts as "they finished"
 const AUTO_SUGGEST_MIN_GAP_MS = 30000; // floor between runs, so a long monologue is not billed per pause
 let autoSuggestTimer = null;
 let autoSuggestLastRun = 0;
+let actionsBusy = false;
+let actionsGeneration = 0;
+let actionIdSeq = 0;
 
 function scheduleAutoSuggest() {
   if (!store.getSettings().autoSuggest) return;
@@ -230,7 +236,7 @@ function scheduleAutoSuggest() {
     if (!store.getSettings().autoSuggest) return;
     if (!transcript.length) return;
     autoSuggestLastRun = Date.now();
-    runFeature('say', '', true);
+    void runActions();
   }, AUTO_SUGGEST_QUIET_MS);
 }
 
@@ -266,6 +272,33 @@ function recordUsage(usage) {
   usageLifetime = accumulateUsage(usageLifetime, usage, { lifetime: true });
   scheduleUsagePersistence();
   usageUpdate();
+}
+
+async function runActions() {
+  if (actionsBusy || !transcript.length) return;
+  const settings = store.getSettings();
+  const llm = createLLM(settings, { forceTier: 'fast' });
+  if (!llm.ready) return;
+
+  actionsBusy = true;
+  const generation = actionsGeneration;
+  try {
+    const reply = await llm.stream({
+      system: buildActionsSystem(settings.persona || 'interview'),
+      turns: [{ role: 'user', text: buildActionsTurn(transcript) }],
+      maxTokens: 150,
+      onToken: () => {},
+      onUsage: recordUsage,
+    });
+    if (generation !== actionsGeneration) return;
+    send('actions:new', {
+      actions: parseActions(reply).map((action) => ({ id: `action-${++actionIdSeq}`, ...action })),
+    });
+  } catch (error) {
+    recordEvent({ level: 'warn', event: 'actions_failed', msg: error?.message || String(error), frame: 'runActions' });
+  } finally {
+    actionsBusy = false;
+  }
 }
 
 // -------- live insights panel --------
@@ -340,6 +373,31 @@ function resetInsights() {
   insightsLastSeq = transcriptSeq;
   insightsGeneration += 1;
   send('insights:clear', {});
+}
+
+function resetActions() {
+  actionsGeneration += 1;
+  actionIdSeq = 0;
+  send('actions:new', { actions: [] });
+}
+
+function startSession() {
+  transcript.splice(0, transcript.length);
+  transcriptSeq = 0;
+  autoSuggestLastRun = 0;
+  autoScreenText = null;
+  resetInsights();
+  resetActions();
+  sessionStartedAt = new Date().toISOString();
+}
+
+function archiveSession() {
+  const endedAt = new Date().toISOString();
+  const file = path.join(app.getPath('userData'), 'sessions', `${endedAt.replace(/[:.]/g, '-')}.json`);
+  const archived = { startedAt: sessionStartedAt || endedAt, endedAt, transcript, insightsShown };
+  fs.promises.mkdir(path.dirname(file), { recursive: true })
+    .then(() => fs.promises.writeFile(file, JSON.stringify(archived, null, 2)))
+    .catch((error) => console.log('[cue] session archive error', error && error.message));
 }
 
 function publishTranscript(channel, text) {
@@ -708,6 +766,7 @@ async function setCapturing(active) {
         }
         await startLocalWhisper(settings);
         send('status', { message: '', persistent: true, key: 'local-model' });
+        startSession();
         state.capturing = true;
         console.log('[cue] capture started, mode: local');
         publishCaptureState(true, false, 'local');
@@ -728,6 +787,7 @@ async function setCapturing(active) {
       }
     }
 
+    startSession();
     state.capturing = true;
     // Try streaming first, fall back to batch
     const streaming = initStreamingSTT();
@@ -760,6 +820,7 @@ async function setCapturing(active) {
       activeWhisperModelId = null;
     }
   }
+  archiveSession();
   return false;
 }
 
@@ -947,6 +1008,18 @@ ipcMain.handle('usage:lifetime-reset', () => {
 ipcMain.on('search:respond', (_e, { id, allowed } = {}) => {
   const finish = pendingSearchRequests.get(id);
   if (finish) finish(allowed);
+});
+ipcMain.on('action:invoke', (_e, { id, kind, payload } = {}) => {
+  if (!id || typeof payload !== 'string') return;
+  const actionModes = {
+    answer: ['answerThis', payload],
+    define: ['answerThis', 'Define: ' + payload],
+    challenge: ['answerThis', payload],
+    say: ['say', ''],
+    recap: ['recap', ''],
+  };
+  const action = actionModes[kind];
+  if (action) void runFeature(action[0], action[1], false);
 });
 function toggleCapture() {
   const targetState = !desiredCaptureState;
