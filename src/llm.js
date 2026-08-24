@@ -161,18 +161,118 @@ function appendToolCall(calls, delta) {
   }
 }
 
-async function consumeOpenAIStream(stream, { model, onToken, onActivity, onUsage }) {
-  let full = '';
+const DSML_TOOL_BLOCK = /<[|｜]{2}DSML[|｜]{2}tool_calls>[\s\S]*?(?:<\/[|｜]{2}DSML[|｜]{2}tool_calls>|$)/gi;
+const BPE_TOOL_BLOCK = /<[|｜]tool▁calls(?:▁begin)?[|｜]>[\s\S]*?(?:<[|｜]tool▁calls▁end[|｜]>|$)/gi;
+const RESIDUAL_TOOL_MARKUP = /<\/?[|｜]{2}DSML[|｜]{2}(?:tool_calls|invoke|parameter)?[^<]*$|<[|｜]tool▁(?:calls(?:▁(?:begin|end))?|call▁(?:begin|end)|call▁argument▁(?:begin|end)|sep)[|｜]?[^<]*$/gi;
+const TOOL_MARKER_OPENINGS = [
+  '<｜｜DSML｜｜tool_calls>', '<||DSML||tool_calls>', '</｜｜DSML｜｜tool_calls>', '</||DSML||tool_calls>',
+  '<|tool▁calls|>', '<｜tool▁calls｜>', '<|tool▁calls▁begin|>', '<｜tool▁calls▁begin｜>',
+  '<|tool▁calls▁end|>', '<｜tool▁calls▁end｜>', '<|tool▁call▁begin|>', '<｜tool▁call▁begin｜>',
+  '<|tool▁call▁end|>', '<｜tool▁call▁end｜>', '<|tool▁call▁argument▁begin|>', '<｜tool▁call▁argument▁begin｜>',
+  '<|tool▁call▁argument▁end|>', '<｜tool▁call▁argument▁end｜>', '<|tool▁sep|>', '<｜tool▁sep｜>'
+];
+
+function stripDeepSeekToolMarkup(text) {
+  return String(text || '').replace(DSML_TOOL_BLOCK, '').replace(BPE_TOOL_BLOCK, '').replace(RESIDUAL_TOOL_MARKUP, '');
+}
+
+function createToolMarkupSanitizer() {
+  let pending = '';
+  const markerIndex = () => {
+    for (let i = pending.indexOf('<'); i >= 0; i = pending.indexOf('<', i + 1)) {
+      const candidate = pending.slice(i);
+      if (TOOL_MARKER_OPENINGS.some(marker => marker.startsWith(candidate) || candidate.startsWith(marker))) return i;
+    }
+    return -1;
+  };
+  return {
+    push(text) {
+      pending += text;
+      const index = markerIndex();
+      if (index < 0) {
+        const safe = stripDeepSeekToolMarkup(pending);
+        pending = '';
+        return safe;
+      }
+      const safe = stripDeepSeekToolMarkup(pending.slice(0, index));
+      pending = pending.slice(index);
+      return safe;
+    },
+    finish() {
+      const safe = stripDeepSeekToolMarkup(pending);
+      pending = '';
+      return safe;
+    }
+  };
+}
+
+function decodeMarkupText(text) {
+  return String(text || '').replace(/&quot;/g, '"').replace(/&apos;/g, "'").replace(/&amp;/g, '&').trim();
+}
+
+function fallbackToolCall(name, args, offeredNames, index) {
+  if (!offeredNames.has(name)) return null;
+  try {
+    const value = JSON.parse(args);
+    if (!value || typeof value !== 'object' || Array.isArray(value)) return null;
+    return { id: `fallback-${index}`, type: 'function', function: { name, arguments: JSON.stringify(value) } };
+  } catch (_) {
+    return null;
+  }
+}
+
+function parseDeepSeekToolCalls(text, offeredNames) {
+  const allowed = new Set(offeredNames || []);
+  const calls = [];
+  const dsml = /<[|｜]{2}DSML[|｜]{2}invoke\s+name=(['"])([^'"]+)\1[^>]*>([\s\S]*?)<\/[|｜]{2}DSML[|｜]{2}invoke>/gi;
+  let match;
+  while ((match = dsml.exec(text))) {
+    const args = {};
+    const parameter = /<[|｜]{2}DSML[|｜]{2}parameter\s+name=(['"])([^'"]+)\1[^>]*>([\s\S]*?)<\/[|｜]{2}DSML[|｜]{2}parameter>/gi;
+    let param;
+    while ((param = parameter.exec(match[3]))) args[param[2]] = decodeMarkupText(param[3]);
+    const call = fallbackToolCall(match[2], JSON.stringify(args), allowed, calls.length);
+    if (call) calls.push(call);
+  }
+  const bpe = /<[|｜]tool▁call▁begin[|｜]>\s*(?:function\s*<[|｜]tool▁sep[|｜]>\s*)?([A-Za-z_][\w-]*)[\s\S]*?(?=<[|｜]tool▁call▁end[|｜]>|$)/gi;
+  while ((match = bpe.exec(text))) {
+    const json = /\{[\s\S]*\}/.exec(match[0]);
+    const call = json && fallbackToolCall(match[1], json[0], allowed, calls.length);
+    if (call) calls.push(call);
+  }
+  return calls;
+}
+
+function hasReliableDeepSeekToolCalls(model) {
+  return !/^deepseek-v4-flash-vision-exp$/i.test(String(model || ''));
+}
+
+async function consumeOpenAIStream(stream, { model, onToken, onActivity, onUsage, offeredToolNames }) {
+  let rawFull = '';
+  let reasoningContent = '';
   const toolCalls = [];
+  const sanitizer = createToolMarkupSanitizer();
   for await (const part of stream) {
     const delta = part.choices?.[0]?.delta || {};
     const text = delta.content;
-    if (text) { full += text; onToken(text); }
+    if (text) {
+      rawFull += text;
+      const safe = sanitizer.push(text);
+      if (safe) onToken(safe);
+    }
+    if (delta.reasoning_content) reasoningContent += delta.reasoning_content;
     if (delta.tool_calls) appendToolCall(toolCalls, delta);
     if ((delta.reasoning_content || delta.tool_calls) && onActivity) onActivity();
     if (part.usage && onUsage) onUsage(normalizeUsage(part.usage, model));
   }
-  return { full, toolCalls: toolCalls.filter(Boolean) };
+  const remaining = sanitizer.finish();
+  if (remaining) onToken(remaining);
+  const structured = toolCalls.filter(Boolean);
+  return {
+    full: stripDeepSeekToolMarkup(rawFull),
+    reasoningContent,
+    toolCalls: structured.length ? structured : parseDeepSeekToolCalls(rawFull, offeredToolNames)
+  };
 }
 
 function createOpenAIRequest({ model, messages, maxTokens, isDeepSeek, thinkingEnabled, mode, tools }) {
@@ -209,13 +309,13 @@ async function streamOpenAI({ apiKey, baseURL, model, system, turns, imageDataUr
     }
   });
   const isDeepSeek = /deepseek/i.test(baseURL || '') || /^deepseek/i.test(model || '');
-  const tools = [
+  const tools = isDeepSeek && !hasReliableDeepSeekToolCalls(model) ? [] : [
     ...(onToolCall && searchTool ? [searchTool] : []),
     ...(onScreenRequest && screenTool ? [screenTool] : []),
   ];
   const first = await consumeOpenAIStream(await client.chat.completions.create(createOpenAIRequest({
     model, messages, maxTokens, isDeepSeek, thinkingEnabled, mode, tools: tools.length ? tools : null
-  })), { model, onToken, onActivity, onUsage });
+  })), { model, onToken, onActivity, onUsage, offeredToolNames: tools.map(tool => tool.function.name) });
   const calledTools = [];
   const toolResults = [];
   let searched = false;
@@ -244,7 +344,8 @@ async function streamOpenAI({ apiKey, baseURL, model, system, turns, imageDataUr
   }
   if (!calledTools.length) return first.full;
 
-  messages.push({ role: 'assistant', content: first.full || null, tool_calls: calledTools });
+  messages.push({ role: 'assistant', content: first.full || null, tool_calls: calledTools,
+    ...(isDeepSeek && first.reasoningContent ? { reasoning_content: first.reasoningContent } : {}) });
   toolResults.forEach(({ tool_call_id, result }) => {
     messages.push({ role: 'tool', tool_call_id, content: JSON.stringify(result) });
   });
@@ -566,8 +667,9 @@ function createLLM(settings, { forceTier } = {}) {
   const ready = !configurationError && !!model;
   const maxTokens = tier === 'smart' ? 1400 : 700;
 
+  const supportsTools = !(/deepseek/i.test(baseURL || '') || /^deepseek/i.test(model || '')) || hasReliableDeepSeekToolCalls(model);
   return {
-    provider, model, apiKey, baseURL,
+    provider, model, apiKey, baseURL, supportsTools,
     ready,
     configurationError,
     async stream(params) {
@@ -596,4 +698,4 @@ function createLLM(settings, { forceTier } = {}) {
   };
 }
 
-module.exports = { modelSupportsVision, createLLM, formatProviderErrorMessage, isQuotaError, CURRENT_GEMINI_DEFAULT, CURRENT_DEEPSEEK_DEFAULT, streamOpenAI, streamClaudeCli, buildReadScreenTool };
+module.exports = { modelSupportsVision, createLLM, formatProviderErrorMessage, isQuotaError, CURRENT_GEMINI_DEFAULT, CURRENT_DEEPSEEK_DEFAULT, streamOpenAI, streamClaudeCli, buildReadScreenTool, stripDeepSeekToolMarkup, createToolMarkupSanitizer, parseDeepSeekToolCalls, hasReliableDeepSeekToolCalls };

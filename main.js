@@ -1002,6 +1002,10 @@ async function runFeature(mode, userText, auto = false, ephemeral = false) {
     }
     const system = def.buildSystem ? def.buildSystem(contextBlock, settingsForPrompt.aiRules || '') : (def.system || '');
     const built = def.build({ transcript, userText: userText || '' });
+    const searchAvailable = ['attack', 'normal'].includes(persona) && (settings.searchMode || 'ask') !== 'off' && llm.supportsTools;
+    const requestSystem = llm.supportsTools
+      ? (searchAvailable ? system : `${system}\n\nNo web search tool is available for this request. If the user asks you to search, say plainly that you cannot search.`)
+      : `${system}\n\nNo tools are available for this request. Answer only from the conversation and provided context. If the user asks you to search, say plainly that you cannot search.`;
 
     // Watchdog: a provider that stalls mid-stream would otherwise hang the await forever,
     // leaving state.busy = true and wedging every later question until an app restart.
@@ -1021,12 +1025,12 @@ async function runFeature(mode, userText, auto = false, ephemeral = false) {
     try {
       await Promise.race([
         llm.stream({
-          system,
+          system: requestSystem,
           turns: [{ role: 'user', text: built }],
           imageDataUrl,
           mode,
           signal: streamAbort.signal,
-          onToolCall: ['attack', 'normal'].includes(persona) && (settings.searchMode || 'ask') !== 'off'
+          onToolCall: searchAvailable
             ? handleSearchToolCall
             : null,
           onScreenRequest: handleScreenToolCall,

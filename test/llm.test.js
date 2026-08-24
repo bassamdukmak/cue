@@ -34,7 +34,7 @@ Module._load = function loadWithOpenAIStub(request, parent, isMain) {
   return originalModuleLoad.call(this, request, parent, isMain);
 };
 
-const { createLLM, formatProviderErrorMessage, isQuotaError, CURRENT_GEMINI_DEFAULT, CURRENT_DEEPSEEK_DEFAULT, buildReadScreenTool } = require('../src/llm');
+const { createLLM, formatProviderErrorMessage, isQuotaError, CURRENT_GEMINI_DEFAULT, CURRENT_DEEPSEEK_DEFAULT, buildReadScreenTool, stripDeepSeekToolMarkup, createToolMarkupSanitizer, parseDeepSeekToolCalls } = require('../src/llm');
 
 test.after(() => {
   Module._load = originalModuleLoad;
@@ -181,6 +181,28 @@ test('DeepSeek LeetCode fast calls use temperature zero', async () => {
   assert.equal(capturedCompletionRequest.temperature, 0);
 });
 
+test('DeepSeek Vision Exp does not receive unsupported tools', async () => {
+  const llm = createLLM(deepseekSettings());
+  await llm.stream({ system: 's', turns: [{ role: 'user', text: 'search Syria news' }], onToken: () => {}, onToolCall: async () => null });
+
+  assert.equal(llm.supportsTools, false);
+  assert.equal(capturedCompletionRequest.tools, undefined);
+});
+
+test('DeepSeek tool continuations preserve reasoning content', async () => {
+  mockStreams = [
+    [
+      { choices: [{ delta: { reasoning_content: 'I need a source.' } }] },
+      { choices: [{ delta: { tool_calls: [{ index: 0, id: 'call-1', type: 'function', function: { name: 'search_facts', arguments: '{"query":"Syria"}' } }] } }] },
+    ],
+    [{ choices: [{ delta: { content: 'Sourced Syria update.' } }] }],
+  ];
+  const llm = createLLM(deepseekSettings({ models: { custom: { fast: 'deepseek-v4-flash', smart: 'deepseek-v4-flash' } } }));
+  await llm.stream({ system: 's', turns: [{ role: 'user', text: 'search Syria news' }], onToken: () => {}, onToolCall: async () => ({ summary: 'result' }) });
+
+  assert.equal(capturedCompletionRequests[1].messages.at(-2).reasoning_content, 'I need a source.');
+});
+
 test('accumulates split search_facts tool calls and streams the continued answer', async () => {
   mockStreams = [
     [
@@ -207,6 +229,38 @@ test('accumulates split search_facts tool calls and streams the continued answer
   assert.match(capturedCompletionRequests[1].messages.at(-1).content, /Apollo 11/);
   assert.equal(reply, 'SAY: sourced answer\nconf: sourced');
   assert.deepEqual(tokens, ['SAY: sourced answer\nconf: sourced']);
+});
+
+test('falls back to DSML content tool calls without rendering the markup', async () => {
+  const dsml = 'I\'ll search for recent news about Syria.<｜｜DSML｜｜tool_calls> <｜｜DSML｜｜invoke name="search_facts"> <｜｜DSML｜｜parameter name="query" string="true">Syria news this week</｜｜DSML｜｜parameter> </｜｜DSML｜｜invoke> </｜｜DSML｜｜tool_calls>';
+  mockStreams = [[{ choices: [{ delta: { content: dsml } }] }], [{ choices: [{ delta: { content: 'Sourced Syria update.' } }] }]];
+  const queries = [];
+  const tokens = [];
+  const reply = await createLLM(createCustomSettings()).stream({
+    system: 's', turns: [{ role: 'user', text: 'search Syria news' }], onToken: token => tokens.push(token),
+    onToolCall: async query => { queries.push(query); return { summary: 'result' }; }
+  });
+
+  assert.deepEqual(queries, ['Syria news this week']);
+  assert.equal(capturedCompletionRequests.length, 2);
+  assert.doesNotMatch(tokens.join(''), /DSML|tool_calls/);
+  assert.doesNotMatch(reply, /DSML|tool_calls/);
+});
+
+test('sanitises complete and partial DeepSeek tool markup before streaming it', () => {
+  assert.equal(stripDeepSeekToolMarkup('safe <|tool▁calls|><|tool▁call▁begin|>search_facts {"query":"Syria"}'), 'safe ');
+  const sanitizer = createToolMarkupSanitizer();
+  assert.equal(sanitizer.push('safe <｜｜D'), 'safe ');
+  assert.equal(sanitizer.push('SML｜｜tool_calls>hidden'), '');
+  assert.equal(sanitizer.finish(), '');
+});
+
+test('parses only offered DSML and BPE fallback tools', () => {
+  const dsml = '<｜｜DSML｜｜tool_calls><｜｜DSML｜｜invoke name="search_facts"><｜｜DSML｜｜parameter name="query" string="true">Syria news</｜｜DSML｜｜parameter></｜｜DSML｜｜invoke></｜｜DSML｜｜tool_calls>';
+  const bpe = '<|tool▁calls|><|tool▁call▁begin|>search_facts<|tool▁call▁argument▁begin|>{"query":"Syria news"}<|tool▁call▁argument▁end|><|tool▁call▁end|><|tool▁calls▁end|>';
+  assert.deepEqual(parseDeepSeekToolCalls(dsml, ['search_facts'])[0].function, { name: 'search_facts', arguments: '{"query":"Syria news"}' });
+  assert.deepEqual(parseDeepSeekToolCalls(bpe, ['search_facts'])[0].function, { name: 'search_facts', arguments: '{"query":"Syria news"}' });
+  assert.deepEqual(parseDeepSeekToolCalls(dsml.replace('search_facts', 'erase_everything'), ['search_facts']), []);
 });
 
 test('search tool description advertises configured optional sources', async () => {
