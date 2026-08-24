@@ -26,6 +26,6 @@ test('the empty-transcript guard runs before the LLM client exists', () => {
 });
 
 test('automatic suggestions do not run after the transcript is cleared', () => {
-  const autoSuggest = mainSource.slice(mainSource.indexOf('function scheduleAutoSuggest'));
-  assert.match(autoSuggest, /if \(!transcript\.length\) return;/);
+  const actionStarter = mainSource.slice(mainSource.indexOf('function startActions'), mainSource.indexOf('function scheduleAutoSuggest'));
+  assert.match(actionStarter, /if \(!store\.getSettings\(\)\.autoSuggest \|\| !transcript\.length\) return;/);
 });

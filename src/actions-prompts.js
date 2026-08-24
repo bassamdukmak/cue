@@ -51,4 +51,15 @@ function parseActions(text) {
   return actions;
 }
 
-module.exports = { buildActionsSystem, buildActionsTurn, parseActions, PERSONA_EMPHASIS };
+function parseCompleteActions(text) {
+  const source = String(text || '');
+  const lastNewline = source.lastIndexOf('\n');
+  return lastNewline < 0 ? [] : parseActions(source.slice(0, lastNewline + 1));
+}
+
+function isQuestionTurn(text) {
+  const turn = String(text || '').trim();
+  return /\?$/.test(turn) || /^(what|why|how|when|where|who|which|can|could|would|should|do|does|did|is|are|will)\b/i.test(turn);
+}
+
+module.exports = { buildActionsSystem, buildActionsTurn, parseActions, parseCompleteActions, isQuestionTurn, PERSONA_EMPHASIS };

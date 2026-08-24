@@ -13,7 +13,7 @@ const { createLLM, modelSupportsVision } = require('./src/llm');
 const { MODES } = require('./src/prompts');
 const { resolveMode } = require('./src/personas');
 const { buildInsightsSystem, buildInsightsTurn, parseInsights } = require('./src/insights-prompts');
-const { buildActionsSystem, buildActionsTurn, parseActions } = require('./src/actions-prompts');
+const { buildActionsSystem, buildActionsTurn, parseActions, parseCompleteActions, isQuestionTurn } = require('./src/actions-prompts');
 const { rms16 } = require('./src/wav');
 const { createStreamingSTT } = require('./src/stt-streaming');
 const { AdaptiveVAD, AudioRingBuffer } = require('./src/vad');
@@ -70,7 +70,7 @@ const EMPTY_TRANSCRIPT_MESSAGE = 'Nothing heard yet. Check the status line — i
 // Counts every turn ever pushed. transcript.length stops growing at the cap, so
 // only this can tell "something new was said" apart from "still 200 turns".
 let transcriptSeq = 0;
-const FLUSH_MS = 900;
+const FLUSH_MS = 500;
 const STREAM_INACTIVITY_MS = 25000; // abort a stalled LLM stream so state.busy can't wedge forever
 const AUTO_SCREEN_COOLDOWN_MS = 45000;
 const SCREEN_TEXT_CACHE_MS = 30000;
@@ -259,25 +259,35 @@ function getWhisperRuntime() {
 // API call. It never queues — if the user pressed something manually, that wins
 // and the automatic run is simply skipped.
 const AUTO_SUGGEST_QUIET_MS = 2500;   // silence that counts as "they finished"
+const ACTIONS_QUIET_MS = 900;
 const ACTIONS_MIN_GAP_MS = 6000;
+const ACTIONS_FAST_MIN_GAP_MS = 2000;
 let autoSuggestTimer = null;
 let actionsLastRun = 0;
 let actionsBusy = false;
 let actionsGeneration = 0;
 let actionIdSeq = 0;
 
-function scheduleAutoSuggest() {
+function startActions(minGap, turnPublishedAt) {
+  if (state.busy || actionsBusy) return;
+  if (Date.now() - actionsLastRun < minGap) return;
+  if (!store.getSettings().autoSuggest || !transcript.length) return;
+  actionsLastRun = Date.now();
+  void runActions({ turnPublishedAt });
+}
+
+function scheduleAutoSuggest(turnPublishedAt) {
   if (!store.getSettings().autoSuggest) return;
   if (autoSuggestTimer) clearTimeout(autoSuggestTimer);
   autoSuggestTimer = setTimeout(() => {
     autoSuggestTimer = null;
-    if (state.busy) return;
-    if (Date.now() - actionsLastRun < ACTIONS_MIN_GAP_MS) return;
-    if (!store.getSettings().autoSuggest) return;
-    if (!transcript.length) return;
-    actionsLastRun = Date.now();
-    void runActions();
-  }, AUTO_SUGGEST_QUIET_MS);
+    startActions(ACTIONS_MIN_GAP_MS, turnPublishedAt);
+  }, ACTIONS_QUIET_MS);
+}
+
+function scheduleQuestionActions(turnPublishedAt) {
+  if (autoSuggestTimer) { clearTimeout(autoSuggestTimer); autoSuggestTimer = null; }
+  startActions(ACTIONS_FAST_MIN_GAP_MS, turnPublishedAt);
 }
 
 // -------- session usage --------
@@ -314,7 +324,7 @@ function recordUsage(usage) {
   usageUpdate();
 }
 
-async function runActions() {
+async function runActions({ turnPublishedAt } = {}) {
   if (actionsBusy || !transcript.length) return;
   const settings = store.getSettings();
   const llm = createLLM(settings, { forceTier: 'fast' });
@@ -323,21 +333,33 @@ async function runActions() {
   actionsBusy = true;
   const generation = actionsGeneration;
   try {
+    let streamedReply = '';
+    let partialActionCount = 0;
+    const sendActions = (actions, phase) => {
+      send('actions:new', {
+        actions: actions.map((action) => ({ id: `action-${++actionIdSeq}`, ...action })),
+      });
+      if (turnPublishedAt) {
+        recordEvent({ level: 'debug', event: 'actions_chips_sent', msg: `chips sent after ${Date.now() - turnPublishedAt}ms`, frame: 'runActions', context: { elapsedMs: Date.now() - turnPublishedAt, phase } });
+      }
+    };
     const reply = await llm.stream({
       system: buildActionsSystem(settings.persona || 'interview'),
       turns: [{ role: 'user', text: buildActionsTurn(transcript) }],
       maxTokens: 150,
-      onToken: () => {},
+      onToken: (token) => {
+        streamedReply += token;
+        const actions = parseCompleteActions(streamedReply);
+        if (actions.length <= partialActionCount) return;
+        partialActionCount = actions.length;
+        sendActions(actions, 'partial');
+      },
       onUsage: recordUsage,
     });
     if (generation !== actionsGeneration) return;
     const actions = parseActions(reply);
     // Keep existing chips when the model has no useful replacements.
-    if (actions.length) {
-      send('actions:new', {
-        actions: actions.map((action) => ({ id: `action-${++actionIdSeq}`, ...action })),
-      });
-    }
+    if (actions.length || partialActionCount) sendActions(actions, 'final');
   } catch (error) {
     recordEvent({ level: 'warn', event: 'actions_failed', msg: error?.message || String(error), frame: 'runActions' });
   } finally {
@@ -458,7 +480,8 @@ function publishTranscript(channel, text) {
       soloFallbackAnnounced = true;
       send('status', { message: 'No meeting audio yet — using your microphone to trigger suggestions.' });
     }
-    scheduleAutoSuggest();
+    if (channel === 'them' && isQuestionTurn(turn.text)) scheduleQuestionActions(turn.ts);
+    else scheduleAutoSuggest(turn.ts);
   }
 }
 

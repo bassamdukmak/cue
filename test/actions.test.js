@@ -2,7 +2,7 @@ const test = require('node:test');
 const assert = require('node:assert/strict');
 const fs = require('node:fs');
 const path = require('node:path');
-const { buildActionsSystem, buildActionsTurn, parseActions } = require('../src/actions-prompts');
+const { buildActionsSystem, buildActionsTurn, parseActions, parseCompleteActions, isQuestionTurn } = require('../src/actions-prompts');
 
 const mainSource = fs.readFileSync(path.join(__dirname, '..', 'main.js'), 'utf8');
 
@@ -25,6 +25,18 @@ test('parseActions drops malformed lines and accepts an empty reply', () => {
   assert.deepEqual(parseActions(''), []);
 });
 
+test('incremental action parser emits complete lines and ignores partial lines', () => {
+  assert.deepEqual(parseCompleteActions('ACTION: answer | Answer now | What is the plan?'), []);
+  assert.deepEqual(parseCompleteActions('ACTION: answer | Answer now | What is the plan?\nACTION: define | Define'), [
+    { kind: 'answer', label: 'Answer now', payload: 'What is the plan?' },
+  ]);
+});
+
+test('question fast path recognizes questions without false positives', () => {
+  for (const text of ['What is the timeline', 'could we ship Friday', 'This ends in a question?']) assert.equal(isQuestionTurn(text), true, text);
+  for (const text of ['Whatever we decide is fine', 'Canary deployment is green', 'They stated the timeline']) assert.equal(isQuestionTurn(text), false, text);
+});
+
 test('action prompts require verbatim payloads and use only recent turns', () => {
   assert.match(buildActionsSystem('attack'), /payload.*verbatim.*transcript/i);
   const turn = buildActionsTurn(Array.from({ length: 10 }, (_, i) => ({ channel: 'them', text: `turn ${i}` })));
@@ -36,7 +48,7 @@ test('automatic actions are fast, replace the list, and invoke explicit modes', 
   assert.match(mainSource, /forceTier: 'fast'/);
   assert.match(mainSource, /maxTokens: 150/);
   assert.match(mainSource, /const actions = parseActions\(reply\)/);
-  assert.match(mainSource, /if \(actions\.length\) \{\s*send\('actions:new'/);
+  assert.match(mainSource, /if \(actions\.length \|\| partialActionCount\) sendActions\(actions, 'final'\)/);
   assert.match(mainSource, /ipcMain\.on\('action:invoke'/);
   assert.match(mainSource, /answer: \['answerThis', payload\]/);
   assert.match(mainSource, /define: \['answerThis', 'Define: ' \+ payload\]/);
@@ -54,13 +66,17 @@ test('chip scheduling has its own gap and empty results do not clear chips', () 
   const scheduleEnd = mainSource.indexOf('// -------- session usage', scheduleStart);
   const schedule = mainSource.slice(scheduleStart, scheduleEnd);
   assert.match(mainSource, /const ACTIONS_MIN_GAP_MS = 6000/);
-  assert.match(schedule, /Date\.now\(\) - actionsLastRun < ACTIONS_MIN_GAP_MS/);
+  assert.match(mainSource, /const ACTIONS_QUIET_MS = 900/);
+  assert.match(mainSource, /const ACTIONS_FAST_MIN_GAP_MS = 2000/);
+  assert.match(schedule, /startActions\(ACTIONS_MIN_GAP_MS, turnPublishedAt\)/);
+  assert.match(schedule, /startActions\(ACTIONS_FAST_MIN_GAP_MS, turnPublishedAt\)/);
   assert.doesNotMatch(schedule, /AUTO_SUGGEST_MIN_GAP_MS/);
 
   const runStart = mainSource.indexOf('async function runActions');
   const runEnd = mainSource.indexOf('// -------- live insights panel', runStart);
   const run = mainSource.slice(runStart, runEnd);
-  assert.match(run, /if \(actions\.length\) \{\s*send\('actions:new'/);
+  assert.match(run, /parseCompleteActions\(streamedReply\)/);
+  assert.match(run, /sendActions\(actions, 'final'\)/);
   assert.doesNotMatch(run, /send\('actions:new', \{\s*actions: parseActions/);
 });
 

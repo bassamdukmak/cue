@@ -19,6 +19,7 @@
       <button class="tb-hide" id="hide-btn"><span class="chev"></span><span>Hide</span></button>
       <div class="tb-divider"></div>
       <button class="tb-stop" id="stop-btn" title="Start / stop listening"></button>
+      <div id="usage-bar" class="usage-bar hidden" title="Session usage"><span id="usage-text"></span></div>
       <div class="tb-divider"></div>
       <button class="tb-quit" id="quit-btn" title="Quit cue (⌘⇧X)"></button>
     </div>
@@ -58,73 +59,40 @@
               </div>
               <div id="composer-bottom">
                 <div class="composer-row composer-primary">
-                <div id="mode-menu" class="mode-menu">
-                  <button id="mode-trigger" class="mode-trigger" title="What cue is helping you do">
-                    <span id="mode-trigger-label">Interview</span><span class="mode-chev">▾</span>
-                  </button>
-                  <div class="mode-list">
-                    <button class="mode-item" data-persona="normal">
-                      <span class="mode-name">Normal</span><span class="mode-hint">General help, no angle</span>
-                    </button>
-                    <button class="mode-item" data-persona="interview">
-                      <span class="mode-name">Interview</span><span class="mode-hint">Help me answer well</span>
-                    </button>
-                    <button class="mode-item" data-persona="attack">
-                      <span class="mode-name">Fact-check</span><span class="mode-hint">Challenge what they claim</span>
-                    </button>
-                    <button class="mode-item" data-persona="negotiation">
-                      <span class="mode-name">Negotiation</span><span class="mode-hint">Salary, vendors, contracts</span>
-                    </button>
-                    <button class="mode-item" data-persona="decode">
-                      <span class="mode-name">Decode</span><span class="mode-hint">Explain what they just said</span>
-                    </button>
-                    <button class="mode-item" data-persona="standup">
-                      <span class="mode-name">Standup</span><span class="mode-hint">Track what I commit to</span>
-                    </button>
-                  </div>
-                </div>
-                <div id="intensity-control" class="intensity-control">
-                  <button id="intensity-toggle" class="intensity-toggle" title="Adjust response intensity">
-                    <span id="intensity-label">Presence · Confident</span><span class="mode-chev">▾</span>
-                  </button>
-                  <div id="intensity-popover" class="intensity-popover hidden">
-                    <div class="intensity-head">
-                      <span class="intensity-name" id="intensity-name">Confident</span>
-                      <span class="intensity-desc" id="intensity-desc">State strengths clearly and back them with proof.</span>
+                  <div id="mode-menu" class="mode-menu">
+                    <button id="mode-trigger" class="mode-trigger" title="What cue is helping you do"><span id="mode-trigger-label">Interview</span><span class="mode-chev">▾</span></button>
+                    <div class="mode-list">
+                      <button class="mode-item" data-persona="normal"><span class="mode-name">Normal</span><span class="mode-hint">General help, no angle</span></button>
+                      <button class="mode-item" data-persona="interview"><span class="mode-name">Interview</span><span class="mode-hint">Help me answer well</span></button>
+                      <button class="mode-item" data-persona="attack"><span class="mode-name">Fact-check</span><span class="mode-hint">Challenge what they claim</span></button>
+                      <button class="mode-item" data-persona="negotiation"><span class="mode-name">Negotiation</span><span class="mode-hint">Salary, vendors, contracts</span></button>
+                      <button class="mode-item" data-persona="decode"><span class="mode-name">Decode</span><span class="mode-hint">Explain what they just said</span></button>
+                      <button class="mode-item" data-persona="standup"><span class="mode-name">Standup</span><span class="mode-hint">Track what I commit to</span></button>
                     </div>
-                    <div class="intensity-slider">
-                      <span class="intensity-track"><span class="intensity-fill" id="intensity-fill"></span></span>
-                      <span class="intensity-dots"><i></i><i></i><i></i><i></i><i></i></span>
-                      <input type="range" id="intensity-range" min="1" max="5" step="1" value="3" aria-label="Response intensity" />
+                  </div>
+                  <div id="intensity-control" class="intensity-control">
+                    <button id="intensity-toggle" class="intensity-toggle" title="Adjust response intensity"><span id="intensity-label">Presence · Confident</span><span class="mode-chev">▾</span></button>
+                    <div id="intensity-popover" class="intensity-popover hidden">
+                      <div class="intensity-head"><span class="intensity-name" id="intensity-name">Confident</span><span class="intensity-desc" id="intensity-desc">State strengths clearly and back them with proof.</span></div>
+                      <div class="intensity-slider"><span class="intensity-track"><span class="intensity-fill" id="intensity-fill"></span></span><span class="intensity-dots"><i></i><i></i><i></i><i></i><i></i></span><input type="range" id="intensity-range" min="1" max="5" step="1" value="3" aria-label="Response intensity" /></div>
+                      <div class="intensity-ends"><span id="intensity-low">Reserved</span><span id="intensity-high">Bold</span></div>
                     </div>
-                    <div class="intensity-ends"><span id="intensity-low">Reserved</span><span id="intensity-high">Bold</span></div>
                   </div>
-                </div>
-                <div class="spacer"></div>
-                <button id="send-btn" title="Send"></button>
-                </div>
-                <div class="composer-row composer-secondary">
-                <button id="listen-toggle" class="listen-pill" type="button" aria-pressed="false" title="Start listening">
-                  <span class="listen-dot" aria-hidden="true"></span><span id="listen-label">▶ Start listening</span>
-                </button>
-                <button id="auto-toggle" class="smart-pill" title="Suggest automatically when the other side stops talking"><span>Auto</span></button>
-                <button id="smart-toggle" class="smart-pill"><span class="ic"></span><span>Smart</span></button>
-                <div id="goal-control" class="goal-control">
-                  <button id="goal-toggle" class="smart-pill" title="Set your goal for this meeting"><span id="goal-label">Goal</span></button>
-                  <div id="goal-popover" class="goal-popover hidden">
-                    <textarea id="meeting-goal" rows="3" spellcheck="false" placeholder="What are you trying to get out of this meeting?"></textarea>
+                  <div class="spacer"></div>
+                  <button id="listen-toggle" class="listen-pill" type="button" aria-pressed="false" title="Start listening"><span class="listen-dot" aria-hidden="true"></span><span id="listen-label">▶ Start listening</span></button>
+                  <div id="more-control" class="more-control">
+                    <button id="more-btn" class="more-btn" title="More controls" aria-expanded="false"></button>
+                    <div id="more-menu" class="more-menu hidden">
+                      <div class="more-menu-label">Session</div>
+                      <div class="more-menu-row"><button id="auto-toggle" class="smart-pill" title="Suggest automatically when the other side stops talking"><span>Auto</span></button><button id="smart-toggle" class="smart-pill"><span class="ic"></span><span>Smart</span></button></div>
+                      <div id="goal-control" class="goal-control"><button id="goal-toggle" class="smart-pill" title="Set your goal for this meeting"><span id="goal-label">Goal</span></button><div id="goal-popover" class="goal-popover hidden"><textarea id="meeting-goal" rows="3" spellcheck="false" placeholder="What are you trying to get out of this meeting?"></textarea></div></div>
+                      <button id="history-btn" class="history-btn" title="View conversation history" aria-label="View conversation history"><span class="ic"></span><span>History</span></button>
+                      <button id="settings-menu-btn" class="more-menu-action" type="button">Settings</button>
+                    </div>
                   </div>
-                </div>
-                <button id="history-btn" class="history-btn" title="View conversation history"><span class="ic"></span></button>
-                <button id="more-btn" class="more-btn" title="Settings"></button>
+                  <button id="send-btn" title="Send"></button>
                 </div>
               </div>
-            </div>
-
-            <!-- Replaces the interview-prep chips: what this session has actually
-                 cost matters far more than whether a resume is filled in. -->
-            <div id="usage-bar" class="usage-bar hidden">
-              <span id="usage-text"></span>
             </div>
           </div>
 
