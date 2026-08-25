@@ -1255,9 +1255,13 @@ function toggleCapture() {
 ipcMain.handle('capture:toggle', toggleCapture);
 ipcMain.handle('capture:state', () => ({ active: state.capturing }));
 ipcMain.handle('voiceprint:status', () => voiceprint.status());
-ipcMain.handle('voiceprint:enroll', () => {
-  if (!state.capturing) throw new Error('Start listening before recording your voiceprint.');
+ipcMain.handle('voiceprint:enroll', async () => {
   if (!voiceprint.status().modelReady) throw new Error('The speaker model is still downloading. Try again when it finishes.');
+  // Enrolment reads the same microphone stream capture feeds, so it cannot run
+  // while listening is off. Starting it here rather than refusing keeps the
+  // user in Settings instead of sending them back to the overlay to press play.
+  if (!state.capturing) await toggleCapture();
+  if (!state.capturing) throw new Error('Could not start the microphone. Check Microphone permission and try again.');
   voiceprintEnrollment = { samples: [], current: [], currentBytes: 0 };
   send('voiceprint:progress', { samples: 0, total: 3 });
   return { recording: true };

@@ -2335,8 +2335,11 @@
       $('#voiceprint-status').textContent = 'Recording 0 / 3';
       $('#voiceprint-detail').textContent = 'Speak naturally for three five-second samples.';
     } catch (error) {
+      // The overlay's status toast is not visible from the Settings scrim, so
+      // the failure has to land next to the button that caused it.
       showStatus('Voiceprint recording could not start: ' + (error.message || error));
-      refreshVoiceprintStatus();
+      await refreshVoiceprintStatus();
+      $('#voiceprint-detail').textContent = error.message || String(error);
     }
   });
 
