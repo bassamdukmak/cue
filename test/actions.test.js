@@ -39,6 +39,8 @@ test('question fast path recognizes questions without false positives', () => {
 
 test('action prompts require verbatim payloads and use only recent turns', () => {
   assert.match(buildActionsSystem('attack'), /payload.*verbatim.*transcript/i);
+  assert.match(buildActionsSystem('attack'), /challenge.*"Them:".*payload.*"Them:"/i);
+  assert.match(buildActionsSystem('attack'), /answer.*"Them:".*payload.*"Them:"/i);
   const turn = buildActionsTurn(Array.from({ length: 10 }, (_, i) => ({ channel: 'them', text: `turn ${i}` })));
   assert.doesNotMatch(turn, /turn 1\b/);
   assert.match(turn, /turn 2\b/);
@@ -82,6 +84,6 @@ test('chip scheduling has its own gap and empty results do not clear chips', () 
 
 test('capture lifecycle resets state and archives the requested session shape', () => {
   assert.match(mainSource, /function startSession\(\)[\s\S]*transcript\.splice\(0, transcript\.length\)[\s\S]*transcriptSeq = 0[\s\S]*resetInsights\(\)[\s\S]*resetActions\(\)[\s\S]*autoScreenText = null/);
-  assert.match(mainSource, /function archiveSession\(\)[\s\S]*\{ startedAt: sessionStartedAt \|\| endedAt, endedAt, transcript, insightsShown \}/);
-  assert.match(mainSource, /fs\.promises\.mkdir[\s\S]*fs\.promises\.writeFile/);
+  assert.match(mainSource, /async function archiveSession\(\)[\s\S]*id, startedAt: sessionStartedAt \|\| endedAt, endedAt,[\s\S]*persona:[\s\S]*turnCount:[\s\S]*title:[\s\S]*notes: null, transcript: snapshot, insights:/);
+  assert.match(mainSource, /await writeArchive\(file, archived\)/);
 });

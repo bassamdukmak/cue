@@ -18,6 +18,7 @@ const NEGOTIATION_RULES =
   + 'the user name one either — hand them a question instead.\n'
   + '- Flag it explicitly when the other side asks something that would commit the user '
   + 'without them noticing.\n'
+  + '- Attribute offers and concessions by transcript prefix: only "Them:" lines are the other side\'s offers or concessions; only "You:" lines are the user\'s. Never reclassify one as the other.\n'
   + '- Silence is a legitimate move. Say so when the strongest play is to let a pause sit.';
 
 const OUTPUT_FORMAT =
@@ -130,7 +131,8 @@ const NEGOTIATION_MODES = {
         ROLE + 'Produce the running ledger of this negotiation from the full transcript.\n\n'
         + 'List, as NOTE: lines: every number either side has named and who named it first; '
         + 'everything the user has agreed to, explicitly or implicitly; everything the other '
-        + 'side has agreed to; and what is still open. Quote verbatim for anything the user '
+        + 'side has agreed to; and what is still open. Treat only "You:" lines as user concessions '
+        + 'and only "Them:" lines as other-side offers or concessions. Quote verbatim for anything the user '
         + 'may have conceded without meaning to — that is the whole point of this view.\n\n'
         + NEGOTIATION_RULES + '\n\n' + outputFormat('0; use NOTE lines only'),
         contextBlock), aiRules, 'ledger');

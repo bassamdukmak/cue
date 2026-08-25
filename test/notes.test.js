@@ -1,6 +1,8 @@
 const test = require('node:test');
 const assert = require('node:assert');
 const { buildNotesPrompt, parseNotes } = require('../src/notes');
+const fs = require('node:fs');
+const path = require('node:path');
 
 const transcript = [
   { channel: 'them', text: 'We need to launch by Friday.', ts: 1 },
@@ -53,4 +55,10 @@ test('parseNotes falls back to summary when the model ignores headings', () => {
 
 test('parseNotes returns empty on blank input', () => {
   assert.deepStrictEqual(parseNotes(''), { summary: '', keyPoints: [], decisions: [], actionItems: [], followUp: [] });
+});
+
+test('parseNotes reads the structured notes fixture', () => {
+  const notes = parseNotes(fs.readFileSync(path.join(__dirname, 'fixtures', 'session-notes.txt'), 'utf8'));
+  assert.deepStrictEqual(notes.actionItems, ['Send release notes']);
+  assert.strictEqual(notes.summary, 'Ship Friday after API review.');
 });

@@ -9,7 +9,7 @@ function buildNotesPrompt(transcript) {
   return (
     'Meeting transcript:\n' +
     (lines || '(empty)') +
-    '\n\nWrite concise meeting notes with EXACTLY these five headings, each ' +
+    '\n\nStart with "Title: " followed by a 3–8 word label. Then write concise meeting notes with EXACTLY these five headings, each ' +
     'heading alone on its own line:\n' +
     'Meeting Summary:\n' +
     'Key Points:\n' +

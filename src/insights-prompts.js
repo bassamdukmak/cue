@@ -36,6 +36,7 @@ const BASE_RULES =
   'You have no internet access. Never add a fact, figure, date or name that was not '
   + 'actually said in the transcript — this panel is a record of the meeting, not '
   + 'commentary on the topic.\n'
+  + '- Attribute every claim, offer, concession, commitment, or question from the transcript by its prefix: "You:" is the user; "Them:" is someone else. Never assign a statement to the wrong side.\n'
   + '- Each line must be a fragment, never a full sentence, and be <=10 words.\n'
   + '- No preamble, no headings, no numbering. Only the prefixed lines.\n'
   + '- Report only what is genuinely established. An empty response is correct when '

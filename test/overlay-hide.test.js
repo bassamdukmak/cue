@@ -26,3 +26,12 @@ test('Overflow controls are interactive in both Electron hit-test paths', () => 
     assert.match(renderer, new RegExp(`#${id}`));
   }
 });
+
+test('Past sessions is reachable and interactive in both Electron hit-test paths', () => {
+  for (const id of ['past-sessions-btn', 'sessions-scrim', 'session-library']) {
+    assert.match(html, new RegExp(`id="${id}"`));
+    assert.match(styles, new RegExp(`#${id}`));
+    assert.match(renderer, new RegExp(`#${id}`));
+  }
+  assert.match(styles, /#session-library[^\n]*-webkit-app-region: no-drag/);
+});

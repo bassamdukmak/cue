@@ -700,6 +700,128 @@
     if (!moreControl.contains(event.target)) closeMoreMenu();
   });
 
+  // ---- archived session library -----------------------------------------
+  const sessionsScrim = $('#sessions-scrim');
+  const sessionLibrary = $('#session-library');
+  const sessionsSearch = $('#sessions-search');
+  let selectedSession = null;
+  let sessionSearchTimer = null;
+
+  function sessionWhen(session) {
+    const started = new Date(session.startedAt);
+    const ended = new Date(session.endedAt);
+    const date = Number.isNaN(started.valueOf()) ? 'Unknown date' : started.toLocaleString();
+    const duration = !Number.isNaN(started.valueOf()) && !Number.isNaN(ended.valueOf())
+      ? `${Math.max(0, Math.round((ended - started) / 60000))} min` : '';
+    return [date, duration, `${session.turnCount || 0} turns`].filter(Boolean).join(' · ');
+  }
+
+  function appendMatch(parent, match) {
+    const text = match?.text || '';
+    const start = Math.max(0, match?.start || 0);
+    const end = start + Math.max(0, match?.length || 0);
+    parent.append(text.slice(0, start));
+    if (end > start) { const mark = document.createElement('mark'); mark.textContent = text.slice(start, end); parent.append(mark); }
+    parent.append(text.slice(end));
+  }
+
+  async function loadSessionList(query = '') {
+    const result = query.trim() ? await cue.sessionsSearch(query) : await cue.sessionsList();
+    const host = $('#session-list');
+    host.replaceChildren();
+    if (!result.ok) { host.textContent = result.error || 'Could not load sessions.'; return; }
+    if (!result.sessions.length) { host.innerHTML = '<div class="session-empty">No past sessions found.</div>'; return; }
+    result.sessions.forEach((item) => {
+      const row = document.createElement('button');
+      row.className = 'session-row'; row.type = 'button';
+      const title = document.createElement('strong'); title.textContent = item.title;
+      const meta = document.createElement('span'); meta.textContent = sessionWhen(item);
+      row.append(title, meta);
+      if (item.match) { const excerpt = document.createElement('small'); appendMatch(excerpt, item.match); row.append(excerpt); }
+      row.addEventListener('click', () => { void openSessionDetail(item.id); });
+      host.append(row);
+    });
+  }
+
+  function renderNotesSection(host, label, content) {
+    if (!content || (Array.isArray(content) && !content.length)) return;
+    const section = document.createElement('section');
+    const heading = document.createElement('h3'); heading.textContent = label; section.append(heading);
+    if (Array.isArray(content)) {
+      const list = document.createElement('ul');
+      content.forEach((item) => { const li = document.createElement('li'); li.textContent = item; list.append(li); });
+      section.append(list);
+    } else { const body = document.createElement('p'); body.textContent = content; section.append(body); }
+    host.append(section);
+  }
+
+  function renderSessionDetail(session) {
+    selectedSession = session;
+    $('#session-list-view').classList.add('hidden');
+    $('#session-detail-view').classList.remove('hidden');
+    $('#session-detail-meta').textContent = sessionWhen(session);
+    $('#session-delete-confirm').classList.add('hidden');
+    const host = $('#session-detail'); host.replaceChildren();
+    const title = document.createElement('h2'); title.textContent = session.title; host.append(title);
+    const notes = session.notes || {};
+    renderNotesSection(host, 'Summary', notes.summary);
+    renderNotesSection(host, 'Key points', notes.keyPoints);
+    renderNotesSection(host, 'Decisions', notes.decisions);
+    renderNotesSection(host, 'Action items', notes.actionItems);
+    renderNotesSection(host, 'Follow-up', notes.followUp);
+    const transcript = document.createElement('section');
+    transcript.className = 'session-transcript';
+    transcript.innerHTML = '<h3>Transcript</h3>';
+    (session.transcript || []).forEach((turn) => {
+      const line = document.createElement('p');
+      const who = document.createElement('strong'); who.textContent = `${turn.channel === 'them' ? 'Them' : 'You'}: `;
+      line.append(who, turn.text); transcript.append(line);
+    });
+    host.append(transcript);
+  }
+
+  async function openSessionDetail(id) {
+    const result = await cue.sessionsGet(id);
+    if (!result.ok) return showStatus(result.error || 'Could not load session.');
+    renderSessionDetail(result.session);
+  }
+
+  function showSessionList() {
+    selectedSession = null;
+    $('#session-detail-view').classList.add('hidden');
+    $('#session-list-view').classList.remove('hidden');
+    void loadSessionList(sessionsSearch.value);
+  }
+
+  function openSessionLibrary() { sessionsScrim.classList.remove('hidden'); sessionLibrary.scrollTop = 0; showSessionList(); sessionsSearch.focus(); }
+  function closeSessionLibrary() { sessionsScrim.classList.add('hidden'); }
+  $('#past-sessions-btn').addEventListener('click', () => { closeMoreMenu(); openSessionLibrary(); });
+  $('#sessions-close').addEventListener('click', closeSessionLibrary);
+  $('#sessions-back').addEventListener('click', showSessionList);
+  sessionsScrim.addEventListener('click', (event) => { if (event.target === sessionsScrim) closeSessionLibrary(); });
+  sessionsSearch.addEventListener('input', () => { clearTimeout(sessionSearchTimer); sessionSearchTimer = setTimeout(() => void loadSessionList(sessionsSearch.value), 120); });
+  $('#session-copy').addEventListener('click', async () => {
+    if (!selectedSession) return;
+    const result = await cue.sessionsGet(selectedSession.id);
+    if (!result.ok) return showStatus(result.error || 'Could not copy session.');
+    try { await navigator.clipboard.writeText(result.sessionMarkdown || ''); } catch { return showStatus('Could not copy session.'); }
+    showStatus('Session copied as markdown.');
+  });
+  $('#session-export').addEventListener('click', async () => {
+    if (!selectedSession) return;
+    const result = await cue.sessionsExport(selectedSession.id);
+    if (!result.ok) return showStatus(result.error || 'Could not export session.');
+    if (!result.canceled) showStatus('Session exported.');
+  });
+  $('#session-delete').addEventListener('click', () => $('#session-delete-confirm').classList.remove('hidden'));
+  $('#session-delete-cancel-btn').addEventListener('click', () => $('#session-delete-confirm').classList.add('hidden'));
+  $('#session-delete-confirm-btn').addEventListener('click', async () => {
+    if (!selectedSession) return;
+    const result = await cue.sessionsDelete(selectedSession.id);
+    if (!result.ok) return showStatus(result.error || 'Could not delete session.');
+    showStatus('Session deleted.'); showSessionList();
+  });
+
   // ---- live insights panel ------------------------------------------------
   // Fed by the main process on its own timer; this side only renders.
   let insightsDismissed = false;
@@ -2266,6 +2388,7 @@
       closeModeMenu();
       closeIntensityPopover();
       goalPopover.classList.add('hidden');
+      closeSessionLibrary();
     }
     if (e.key === 'Escape' && !scrim.classList.contains('hidden')) closeSettings();
     if ((e.metaKey || e.ctrlKey) && e.key === ',') { e.preventDefault(); openSettings(); }
@@ -2280,7 +2403,7 @@
   function setIgnore(v) { if (v !== ignoring) { ignoring = v; cue.setIgnoreMouse(v); } }
   document.addEventListener('mousemove', (e) => {
     const el = document.elementFromPoint(e.clientX, e.clientY);
-    const overUI = !!(el && el.closest && el.closest('#toolbar, #panel-wrap, #ephemeral-answer, #action-strip, #listen-toggle, .search-chip, #mode-menu, #goal-popover, #intensity-popover, #more-control, #more-menu, #settings-menu-btn, #insights-panel, #transcript-sidebar, #settings-scrim, #onboard-scrim, #consent-scrim'));
+    const overUI = !!(el && el.closest && el.closest('#toolbar, #panel-wrap, #ephemeral-answer, #action-strip, #listen-toggle, .search-chip, #mode-menu, #goal-popover, #intensity-popover, #more-control, #more-menu, #past-sessions-btn, #settings-menu-btn, #insights-panel, #transcript-sidebar, #sessions-scrim, #settings-scrim, #onboard-scrim, #consent-scrim'));
     setIgnore(!overUI);
   });
   setIgnore(true); // start fully click-through; hovering the panel re-enables it

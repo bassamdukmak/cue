@@ -5,9 +5,13 @@
 
 const { appendAiRules } = require('./profile-context');
 
+const TRANSCRIPT_SPEAKER_HEADER = 'Speaker labels: Lines beginning "You:" are the user speaking. Lines beginning "Them:" are other people.';
+
 function formatTranscript(turns, limit) {
   const recent = limit ? turns.slice(-limit) : turns;
-  return recent.map((t) => (t.channel === 'them' ? 'Them: ' : 'You: ') + t.text).join('\n');
+  if (!recent.length) return '';
+  return TRANSCRIPT_SPEAKER_HEADER + '\n'
+    + recent.map((t) => (t.channel === 'them' ? 'Them: ' : 'You: ') + t.text).join('\n');
 }
 
 function buildSystem(base, contextBlock) {
@@ -213,4 +217,4 @@ const MODES = {
   }
 };
 
-module.exports = { MODES, formatTranscript, buildSystem, applyRules, INTERVIEW_OUTPUT_FORMAT };
+module.exports = { MODES, formatTranscript, buildSystem, applyRules, INTERVIEW_OUTPUT_FORMAT, TRANSCRIPT_SPEAKER_HEADER };

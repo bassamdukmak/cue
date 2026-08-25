@@ -135,6 +135,14 @@ test('challenge mode refuses to invent a disagreement', () => {
   assert.match(system, /never manufacture a disagreement/i);
 });
 
+test('every attack mode excludes the user\'s transcript lines from challenges', () => {
+  for (const [name, mode] of Object.entries(ATTACK_MODES)) {
+    const system = mode.buildSystem(null, '');
+    assert.match(system, /challenge ONLY lines prefixed "Them:"/i, `${name} must exclude You: lines`);
+    assert.match(system, /never challenge, contradict, fact-check, or undermine them/i, `${name} must protect You: lines`);
+  }
+});
+
 test('documents are delimited and marked as data, not instructions', () => {
   const block = buildDocumentsBlock([{ name: 'spec.pdf', text: 'Latency budget is 200ms.' }]);
   assert.match(block, /BEGIN DOCUMENT: spec\.pdf/);
@@ -413,7 +421,7 @@ test('every helper called in main.js is actually imported from its module', () =
   // applyPersonaButtonLabels broke boot, and a lost resetAutoSuggestTrigger broke
   // EVERY capture start — the app could never begin listening.
   const src = require('fs').readFileSync(require('path').join(__dirname, '..', 'main.js'), 'utf8');
-  for (const helper of ['resetAutoSuggestTrigger', 'shouldScheduleAutoSuggest', 'shouldCheckScreen', 'extractTextFromImage', 'searchFacts', 'getIntensityLine', 'buildDocumentsBlock', 'parseInsights', 'buildActionsSystem', 'buildActionsTurn', 'parseActions']) {
+  for (const helper of ['resetAutoSuggestTrigger', 'shouldScheduleAutoSuggest', 'shouldCheckScreen', 'extractTextFromImage', 'searchFacts', 'getIntensityLine', 'buildDocumentsBlock', 'parseInsights', 'buildActionsSystem', 'buildActionsTurn', 'parseActions', 'fallbackTitle', 'writeArchive', 'listSessions', 'getSession', 'deleteSession', 'exportSession', 'searchSessions', 'buildNotesPrompt', 'parseNotes']) {
     if (new RegExp('\\b' + helper + '\\(').test(src)) {
       assert.match(src, new RegExp('require\\([^)]*\\)[^;]*' + helper + '|' + helper + '[^;]*= require|\\{[^}]*' + helper + '[^}]*\\} = require'),
         helper + ' is called in main.js but never imported');

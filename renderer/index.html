@@ -87,6 +87,7 @@
                       <div class="more-menu-row"><button id="auto-toggle" class="smart-pill" title="Suggest automatically when the other side stops talking"><span>Auto</span></button><button id="smart-toggle" class="smart-pill"><span class="ic"></span><span>Smart</span></button></div>
                       <div id="goal-control" class="goal-control"><button id="goal-toggle" class="smart-pill" title="Set your goal for this meeting"><span id="goal-label">Goal</span></button><div id="goal-popover" class="goal-popover hidden"><textarea id="meeting-goal" rows="3" spellcheck="false" placeholder="What are you trying to get out of this meeting?"></textarea></div></div>
                       <button id="history-btn" class="history-btn" title="View conversation history" aria-label="View conversation history"><span class="ic"></span><span>History</span></button>
+                      <button id="past-sessions-btn" class="more-menu-action" type="button">Past sessions</button>
                       <button id="settings-menu-btn" class="more-menu-action" type="button">Settings</button>
                     </div>
                   </div>
@@ -142,6 +143,30 @@
       </div>
       <div class="ts-footer">
         <button class="ts-clear-btn" id="clear-transcript-btn" title="Clear all history">Clear History</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Archived sessions -->
+  <div id="sessions-scrim" class="hidden">
+    <div id="session-library" class="glass" tabindex="-1">
+      <div class="s-head">
+        <div class="s-title">Past sessions</div>
+        <button id="sessions-close" class="s-close" type="button">Done</button>
+      </div>
+      <div id="session-list-view" class="session-view">
+        <input id="sessions-search" class="sessions-search" type="search" placeholder="Search past sessions" autocomplete="off" />
+        <div id="session-list" class="session-scroll"></div>
+      </div>
+      <div id="session-detail-view" class="session-view hidden">
+        <div class="session-detail-head"><button id="sessions-back" class="s-action" type="button">Back</button><span id="session-detail-meta" class="s-note"></span></div>
+        <div id="session-detail" class="session-scroll"></div>
+        <div class="session-actions">
+          <button id="session-copy" class="s-action" type="button">Copy as markdown</button>
+          <button id="session-export" class="s-action" type="button">Export to file</button>
+          <button id="session-delete" class="s-action danger" type="button">Delete</button>
+          <span id="session-delete-confirm" class="session-delete-confirm hidden">Delete permanently? <button id="session-delete-confirm-btn" class="s-action danger" type="button">Delete</button><button id="session-delete-cancel-btn" class="s-action" type="button">Cancel</button></span>
+        </div>
       </div>
     </div>
   </div>

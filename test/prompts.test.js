@@ -1,6 +1,6 @@
 const test = require('node:test');
 const assert = require('node:assert/strict');
-const { MODES } = require('../src/prompts');
+const { MODES, TRANSCRIPT_SPEAKER_HEADER } = require('../src/prompts');
 const { ATTACK_MODES } = require('../src/attack-prompts');
 const { NEGOTIATION_MODES } = require('../src/negotiation-prompts');
 const { DECODE_MODES } = require('../src/decode-prompts');
@@ -23,6 +23,12 @@ test('say mode produces a spoken answer not a question', () => {
   assert.match(text, /say out loud|in first person/i);
   // Must instruct a terse spoken line, not meta-instructions.
   assert.match(text, /SAY: <=20 words|speakable words only/i);
+});
+
+test('assembled transcript prompts include the shared speaker-label header', () => {
+  const prompt = MODES.say.build({ transcript: [{ channel: 'them', text: 'Can you ship it?' }], userText: '' });
+  assert.match(prompt, new RegExp(TRANSCRIPT_SPEAKER_HEADER.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')));
+  assert.match(prompt, /Them: Can you ship it\?/);
 });
 
 test('leetcode mode ignores context block and returns coding prompt', () => {

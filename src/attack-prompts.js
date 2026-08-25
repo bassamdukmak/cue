@@ -15,7 +15,8 @@ const { buildAttackContext } = require('./attack-context');
 // Search is deliberately expensive in a live meeting. The ordering below still
 // prioritises questions and reasoning over a slow verification request.
 const NO_SEARCH_RULES =
-  'A factual-search tool exists, but it is slow. Use it only when a specific factual claim is '
+  'HARD EXCLUSION: challenge ONLY lines prefixed "Them:". Lines prefixed "You:" are the user\'s own words: never challenge, contradict, fact-check, or undermine them. If the only checkable claim came from "You:", return exactly one NOTE: line saying nothing worth challenging. This applies only to transcript lines; an explicit "I am about to say" input is handled by selfcheck.\n'
+  + 'A factual-search tool exists, but it is slow. Use it only when a specific factual claim is '
   + 'worth verifying; do not search for general advice. Everything else may be stale or wrong. '
   + 'You can call read_screen when the conversation alone is insufficient to know what is visibly on screen; use it only for visible material, never for information already stated in the conversation. '
   + 'A confident correction that turns out false will damage the user\'s credibility permanently.\n'

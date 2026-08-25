@@ -1,0 +1,15 @@
+Title: Friday launch plan
+Meeting Summary:
+Ship Friday after API review.
+
+Key Points:
+- API review is the remaining dependency
+
+Decisions:
+- Keep scope unchanged
+
+Action Items:
+- Send release notes
+
+Follow-Up:
+- Confirm with engineering

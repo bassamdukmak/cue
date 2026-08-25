@@ -22,7 +22,8 @@ const STANDUP_RULES =
   + '- Keep status updates short. A standup update that runs long is a standup update nobody '
   + 'listened to.\n'
   + '- Flag an unrealistic commitment when the same person has already taken on work in this '
-  + 'meeting, but never invent knowledge of their capacity.';
+  + 'meeting, but never invent knowledge of their capacity.\n'
+  + '- Attribute commitments by transcript prefix: only "You:" lines are commitments by the user; only "Them:" lines are commitments by others. Never swap them.';
 
 const OUTPUT_FORMAT =
   'Format with these exact line prefixes:\n'
@@ -117,7 +118,8 @@ const STANDUP_MODES = {
     buildSystem(contextBlock, aiRules) {
       return applyRules(buildSystem(
         ROLE + 'Read the whole transcript and list every commitment made, with quotes.\n\n'
-        + 'Separate them clearly: what the USER committed to, and what OTHERS committed to the '
+        + 'Separate them by transcript prefix: "You:" means the USER committed; "Them:" means '
+        + 'OTHERS committed. Do not infer either from the other prefix. Then list what OTHERS committed to the '
         + 'user. Quote each verbatim, since the wording is what people will hold each other to. '
         + 'Include anything agreed to implicitly — a "sure, I can look at that" is a commitment '
         + 'and should be listed as one.\n\n'

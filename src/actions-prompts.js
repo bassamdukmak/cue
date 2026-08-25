@@ -23,9 +23,9 @@ function buildActionsSystem(persona) {
     + 'Output one line per action, with no preamble or numbering:\n'
     + 'ACTION: <kind> | <label> | <payload>\n\n'
     + 'Kinds:\n'
-    + 'answer — a question someone just asked; payload is that question verbatim.\n'
+    + 'answer — a question asked by a "Them:" speaker; payload is that "Them:" question verbatim. Never target a "You:" question.\n'
     + 'define — a term worth explaining; payload is that term verbatim.\n'
-    + 'challenge — a checkable claim; payload is that claim verbatim.\n'
+    + 'challenge — a checkable claim from a "Them:" speaker; payload is that "Them:" claim verbatim. Never target a "You:" line.\n'
     + 'screen — visible material being discussed; payload is that exact reference verbatim.\n'
     + 'say — a moment where the user should speak; payload is one-line context verbatim.\n'
     + 'recap — only after a long stretch; payload is one-line context verbatim.';
