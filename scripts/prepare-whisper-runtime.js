@@ -197,6 +197,7 @@ async function prepareMacTarget(target, temporaryDirectory, destinationDirectory
     '-DCMAKE_OSX_DEPLOYMENT_TARGET=11.0',
     '-DBUILD_SHARED_LIBS=OFF',
     '-DGGML_NATIVE=OFF',
+    '-DGGML_METAL=ON',
     '-DWHISPER_BUILD_TESTS=OFF',
     '-DWHISPER_BUILD_EXAMPLES=ON',
     '-DWHISPER_BUILD_SERVER=ON',

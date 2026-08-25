@@ -157,7 +157,7 @@ test('DeepSeek smart enables thinking without sending temperature', async () => 
 });
 
 test('DeepSeek Vision Exp sends the original image as an OpenAI image_url part', async () => {
-  const llm = createLLM(deepseekSettings());
+  const llm = createLLM(deepseekSettings({ models: { custom: { fast: 'deepseek-v4-flash-vision-exp', smart: 'deepseek-v4-flash-vision-exp' } } }));
   await llm.stream({
     system: 's',
     turns: [{ role: 'user', text: 'Read this screen.' }],
@@ -182,7 +182,7 @@ test('DeepSeek LeetCode fast calls use temperature zero', async () => {
 });
 
 test('DeepSeek Vision Exp does not receive unsupported tools', async () => {
-  const llm = createLLM(deepseekSettings());
+  const llm = createLLM(deepseekSettings({ models: { custom: { fast: 'deepseek-v4-flash-vision-exp', smart: 'deepseek-v4-flash-vision-exp' } } }));
   await llm.stream({ system: 's', turns: [{ role: 'user', text: 'search Syria news' }], onToken: () => {}, onToolCall: async () => null });
 
   assert.equal(llm.supportsTools, false);

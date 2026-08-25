@@ -13,22 +13,10 @@ const PERSONA_EMPHASIS = {
 
 function buildActionsSystem(persona) {
   const emphasis = PERSONA_EMPHASIS[persona] || PERSONA_EMPHASIS.interview;
-  return 'You propose 1-3 compact clickable actions from a live meeting transcript. "Them" is everyone else; "You" is the user. '
-    + emphasis + '\n\n'
-    + 'Only propose something genuinely actionable. Return nothing when there is none. '
-    + 'Every payload must be copied verbatim from the transcript: never invent, paraphrase, combine, or shorten it. '
-    + 'A payload is an exact contiguous quote from the transcript. Labels may summarize but must be six words or fewer. '
-    + 'When the transcript refers to visible material such as "this slide", "these numbers", "as you can see", or "on the screen", propose screen so cue can inspect it instead of guessing. '
-    + 'Use recap only after a long stretch of conversation.\n\n'
-    + 'Output one line per action, with no preamble or numbering:\n'
-    + 'ACTION: <kind> | <label> | <payload>\n\n'
-    + 'Kinds:\n'
-    + 'answer — a question asked by a "Them:" speaker; payload is that "Them:" question verbatim. Never target a "You:" question.\n'
-    + 'define — a term worth explaining; payload is that term verbatim.\n'
-    + 'challenge — a checkable claim from a "Them:" speaker; payload is that "Them:" claim verbatim. Never target a "You:" line.\n'
-    + 'screen — visible material being discussed; payload is that exact reference verbatim.\n'
-    + 'say — a moment where the user should speak; payload is one-line context verbatim.\n'
-    + 'recap — only after a long stretch; payload is one-line context verbatim.';
+  return 'Return 1-3 useful live-meeting chips, or nothing. "Them" is others; "You" is the user. ' + emphasis + '\n'
+    + 'Only output: ACTION: <answer|define|challenge|screen|say|recap> | <label of <=6 words> | <payload>\n'
+    + 'Payloads must be exact contiguous transcript quotes: never invent, paraphrase, combine, or shorten. '
+    + 'answer and challenge quote only "Them:"; define quotes a term; screen is visible material; say is a speaking moment; recap only follows a long conversation.';
 }
 
 function buildActionsTurn(transcript) {

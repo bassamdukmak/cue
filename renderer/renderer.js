@@ -1779,6 +1779,7 @@
     fillSettings();
     scrim.classList.remove('hidden');
     refreshWhisperModels();
+    refreshVoiceprintStatus();
   }
   $('#settings-menu-btn').addEventListener('click', () => {
     closeMoreMenu();
@@ -2300,6 +2301,59 @@
     }
   });
   cue.on('whisper:models-changed', () => refreshWhisperModels());
+
+  function renderVoiceprintStatus(status) {
+    const badge = $('#voiceprint-status');
+    const enrolled = !!status?.enrolled;
+    const modelReady = !!status?.modelReady;
+    badge.classList.toggle('ready', enrolled);
+    badge.classList.toggle('error', !enrolled && !modelReady);
+    badge.textContent = enrolled ? 'Enrolled' : (modelReady ? 'Not enrolled' : 'Model downloading');
+    $('#voiceprint-enroll').disabled = !modelReady;
+    $('#voiceprint-delete').disabled = !enrolled;
+    $('#voiceprint-detail').textContent = enrolled
+      ? 'Mic turns that are clearly not Bassam are labelled “them”. Meeting audio is never analysed.'
+      : (modelReady
+        ? 'Recognizes Bassam only on the microphone channel. Meeting audio is never analysed.'
+        : 'The local speaker model is still downloading. Voiceprint recording will unlock when it finishes.');
+  }
+
+  async function refreshVoiceprintStatus() {
+    try {
+      renderVoiceprintStatus(await cue.voiceprintStatus());
+    } catch (error) {
+      $('#voiceprint-status').classList.add('error');
+      $('#voiceprint-status').textContent = 'Unavailable';
+      $('#voiceprint-detail').textContent = error.message || 'Voiceprint status could not be loaded.';
+    }
+  }
+
+  $('#voiceprint-enroll').addEventListener('click', async () => {
+    try {
+      await cue.voiceprintEnroll();
+      $('#voiceprint-enroll').disabled = true;
+      $('#voiceprint-status').textContent = 'Recording 0 / 3';
+      $('#voiceprint-detail').textContent = 'Speak naturally for three five-second samples.';
+    } catch (error) {
+      showStatus('Voiceprint recording could not start: ' + (error.message || error));
+      refreshVoiceprintStatus();
+    }
+  });
+
+  $('#voiceprint-delete').addEventListener('click', async () => {
+    if (!window.confirm('Delete the stored voiceprint vector from this Mac?')) return;
+    try {
+      renderVoiceprintStatus(await cue.voiceprintDelete());
+      showStatus('Voiceprint deleted from this Mac.');
+    } catch (error) {
+      showStatus('Voiceprint could not be deleted: ' + (error.message || error));
+    }
+  });
+
+  cue.on('voiceprint:progress', ({ samples, total }) => {
+    $('#voiceprint-status').textContent = samples === total ? 'Saving…' : `Recording ${samples} / ${total}`;
+  });
+  cue.on('voiceprint:status', (status) => renderVoiceprintStatus(status));
 
   async function saveSettings() {
     // Keys

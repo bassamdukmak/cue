@@ -38,9 +38,9 @@ test('question fast path recognizes questions without false positives', () => {
 });
 
 test('action prompts require verbatim payloads and use only recent turns', () => {
-  assert.match(buildActionsSystem('attack'), /payload.*verbatim.*transcript/i);
-  assert.match(buildActionsSystem('attack'), /challenge.*"Them:".*payload.*"Them:"/i);
-  assert.match(buildActionsSystem('attack'), /answer.*"Them:".*payload.*"Them:"/i);
+  assert.match(buildActionsSystem('attack'), /payloads.*exact contiguous.*transcript/i);
+  assert.match(buildActionsSystem('attack'), /never invent, paraphrase, combine, or shorten/i);
+  assert.match(buildActionsSystem('attack'), /answer and challenge quote only "Them:"/i);
   const turn = buildActionsTurn(Array.from({ length: 10 }, (_, i) => ({ channel: 'them', text: `turn ${i}` })));
   assert.doesNotMatch(turn, /turn 1\b/);
   assert.match(turn, /turn 2\b/);
@@ -48,9 +48,9 @@ test('action prompts require verbatim payloads and use only recent turns', () =>
 
 test('automatic actions are fast, replace the list, and invoke explicit modes', () => {
   assert.match(mainSource, /forceTier: 'fast'/);
-  assert.match(mainSource, /maxTokens: 150/);
+  assert.match(mainSource, /maxTokens: 96/);
   assert.match(mainSource, /const actions = parseActions\(reply\)/);
-  assert.match(mainSource, /if \(actions\.length \|\| partialActionCount\) sendActions\(actions, 'final'\)/);
+  assert.match(mainSource, /if \(actions\.length \|\| partialActionCount\)/);
   assert.match(mainSource, /ipcMain\.on\('action:invoke'/);
   assert.match(mainSource, /answer: \['answerThis', payload\]/);
   assert.match(mainSource, /define: \['answerThis', 'Define: ' \+ payload\]/);
@@ -69,15 +69,17 @@ test('chip scheduling has its own gap and empty results do not clear chips', () 
   const schedule = mainSource.slice(scheduleStart, scheduleEnd);
   assert.match(mainSource, /const ACTIONS_MIN_GAP_MS = 6000/);
   assert.match(mainSource, /const ACTIONS_QUIET_MS = 900/);
-  assert.match(mainSource, /const ACTIONS_FAST_MIN_GAP_MS = 2000/);
-  assert.match(schedule, /startActions\(ACTIONS_MIN_GAP_MS, turnPublishedAt\)/);
-  assert.match(schedule, /startActions\(ACTIONS_FAST_MIN_GAP_MS, turnPublishedAt\)/);
+  assert.match(mainSource, /const ACTIONS_FAST_MIN_GAP_MS = 0/);
+  assert.match(schedule, /startActions\(ACTIONS_MIN_GAP_MS, timing\)/);
+  assert.match(schedule, /startActions\(ACTIONS_FAST_MIN_GAP_MS, timing\)/);
   assert.doesNotMatch(schedule, /AUTO_SUGGEST_MIN_GAP_MS/);
 
   const runStart = mainSource.indexOf('async function runActions');
   const runEnd = mainSource.indexOf('// -------- live insights panel', runStart);
   const run = mainSource.slice(runStart, runEnd);
   assert.match(run, /parseCompleteActions\(streamedReply\)/);
+  assert.match(run, /event: 'actions_latency'/);
+  assert.match(run, /speechEndToAudioFlushMs/);
   assert.match(run, /sendActions\(actions, 'final'\)/);
   assert.doesNotMatch(run, /send\('actions:new', \{\s*actions: parseActions/);
 });

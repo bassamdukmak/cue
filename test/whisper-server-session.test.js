@@ -60,6 +60,9 @@ test('loads one server process and reuses it for multiple in-memory inferences',
   const argumentsList = spawnCalls[0][1];
   assert.deepEqual(argumentsList.slice(0, 2), ['--model', modelPath]);
   assert.ok(argumentsList.includes('--request-path'));
+  assert.ok(argumentsList.includes('--best-of'));
+  assert.ok(argumentsList.includes('--beam-size'));
+  assert.ok(argumentsList.includes('--no-fallback'));
   assert.ok(!argumentsList.includes('--convert'));
 
   assert.equal(await session.transcribe(Buffer.alloc(3200)), 'hello locally');

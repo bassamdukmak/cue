@@ -24,6 +24,9 @@ contextBridge.exposeInMainWorld('cue', {
     return false;
   }),
   captureState: () => ipcRenderer.invoke('capture:state'),
+  voiceprintStatus: () => ipcRenderer.invoke('voiceprint:status'),
+  voiceprintEnroll: () => ipcRenderer.invoke('voiceprint:enroll'),
+  voiceprintDelete: () => ipcRenderer.invoke('voiceprint:delete'),
   captureInputFailed: (channel, message) => ipcRenderer.invoke('capture:input-failed', { channel, message }),
   micPcm: (arrayBuffer) => ipcRenderer.send('mic:pcm', arrayBuffer),
   systemPcm: (arrayBuffer) => ipcRenderer.send('system:pcm', arrayBuffer),

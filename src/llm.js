@@ -43,7 +43,7 @@ function buildReadScreenTool() {
 // Google's own SDK examples standardize on and is documented as free-tier
 // available, so it is the single default used everywhere in this file.
 const CURRENT_GEMINI_DEFAULT = 'gemini-2.5-flash';
-const CURRENT_DEEPSEEK_DEFAULT = 'deepseek-v4-flash-vision-exp';
+const CURRENT_DEEPSEEK_DEFAULT = 'deepseek-v4-flash';
 const DEFAULT_MODELS = {
   openai: 'gpt-4o-mini',
   anthropic: 'claude-3-5-haiku-latest',

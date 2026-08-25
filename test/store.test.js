@@ -90,18 +90,18 @@ test('search is off, auto-listen is on by default, and Claude CLI models are pre
   }
 });
 
-test('the former DeepSeek default pair migrates to Vision Exp without replacing explicit text-only choices', () => {
+test('the former Vision Exp default pair migrates back to text-only Flash without replacing explicit choices', () => {
   const directory = fs.mkdtempSync(path.join(os.tmpdir(), 'cue-store-'));
   const file = path.join(directory, 'cue-data.json');
   try {
-    fs.writeFileSync(file, JSON.stringify({ models: { custom: { fast: 'deepseek-v4-flash', smart: 'deepseek-v4-flash' } } }));
+    fs.writeFileSync(file, JSON.stringify({ models: { custom: { fast: 'deepseek-v4-flash-vision-exp', smart: 'deepseek-v4-flash-vision-exp' } } }));
     assert.deepEqual(loadStore(directory).getSettings().models.custom, {
-      fast: 'deepseek-v4-flash-vision-exp', smart: 'deepseek-v4-flash-vision-exp'
+      fast: 'deepseek-v4-flash', smart: 'deepseek-v4-flash'
     });
 
-    fs.writeFileSync(file, JSON.stringify({ models: { custom: { fast: 'deepseek-v4-flash', smart: 'other-model' } } }));
+    fs.writeFileSync(file, JSON.stringify({ models: { custom: { fast: 'deepseek-v4-flash-vision-exp', smart: 'other-model' } } }));
     assert.deepEqual(loadStore(directory).getSettings().models.custom, {
-      fast: 'deepseek-v4-flash', smart: 'other-model'
+      fast: 'deepseek-v4-flash-vision-exp', smart: 'other-model'
     });
   } finally {
     fs.rmSync(directory, { recursive: true, force: true });

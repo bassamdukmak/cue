@@ -299,6 +299,19 @@
           <div class="s-note">Use 0 for whisper.cpp's default. English-only models always use English regardless of the language setting.</div>
         </div>
 
+        <div class="whisper-card" id="voiceprint-card">
+          <div class="whisper-runtime-row">
+            <span class="s-label">Your voice</span>
+            <span id="voiceprint-status" class="whisper-badge">Checking…</span>
+          </div>
+          <div id="voiceprint-detail" class="s-note">Recognizes Bassam only on the microphone channel. Meeting audio is never analysed.</div>
+          <div class="whisper-actions">
+            <button id="voiceprint-enroll" class="s-action">Record 3 × 5 seconds</button>
+            <button id="voiceprint-delete" class="s-action danger" disabled>Delete voiceprint</button>
+          </div>
+          <div class="s-note">Start listening, then speak naturally while recording. Deleting erases the stored biometric vector from this Mac.</div>
+        </div>
+
         <div class="s-status" id="whisper-status"></div>
       </div>
 

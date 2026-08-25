@@ -59,6 +59,7 @@ const DEFAULTS = {
   standingContext: '',   // durable user/company/project context for every persona
   negotiationFloor: '',  // walk-away point — never revealed, never conceded past
   negotiationNotes: '',  // other priorities: start date, equity, scope, timeline
+  voiceprint: null,      // local speaker centroid; null means no biometric data is stored
 
   // Window position
   windowX: null,
@@ -70,7 +71,7 @@ const DEFAULTS = {
     // (the previous default here) was retired by Google on 2026-03-03 and 404s
     // on every request. gemini-2.5-flash is current and free-tier available.
     gemini: { fast: 'gemini-2.5-flash', smart: 'gemini-2.5-flash' },
-    custom: { fast: 'deepseek-v4-flash-vision-exp', smart: 'deepseek-v4-flash-vision-exp' },
+    custom: { fast: 'deepseek-v4-flash', smart: 'deepseek-v4-flash' },
     ollama: { fast: 'llama3.2', smart: 'llama3.3' },
     groq: { fast: 'llama-3.1-8b-instant', smart: 'llama-3.3-70b-versatile' },
     minimax: { fast: 'MiniMax-M2.7', smart: 'MiniMax-M3' },
@@ -101,9 +102,11 @@ function migrateSettings(stored) {
   if (!stored || typeof stored !== 'object') return stored;
   const { aggression, intensity, ...withoutAggression } = stored;
   const custom = stored.models?.custom;
-  // Only migrate cue's former default pair; a user who selected text-only Flash
-  // for either tier keeps that explicit choice and the OCR fallback.
-  const wasPreviousDefault = custom?.fast === 'deepseek-v4-flash' && custom?.smart === 'deepseek-v4-flash';
+  // Vision Exp was briefly the default, but it is not in DeepSeek's published
+  // model list and its tool calls are unreliable, so search and read_screen do
+  // not work on it. Text-only Flash plus native OCR is the supported path; move
+  // the former default pair back. An explicit per-tier choice is left alone.
+  const wasPreviousDefault = custom?.fast === 'deepseek-v4-flash-vision-exp' && custom?.smart === 'deepseek-v4-flash-vision-exp';
   return {
     ...withoutAggression,
     ...(Object.hasOwn(stored, 'aggression') ? {
@@ -113,7 +116,7 @@ function migrateSettings(stored) {
       },
     } : {}),
     ...(wasPreviousDefault ? {
-      models: { ...stored.models, custom: { ...custom, fast: 'deepseek-v4-flash-vision-exp', smart: 'deepseek-v4-flash-vision-exp' } },
+      models: { ...stored.models, custom: { ...custom, fast: 'deepseek-v4-flash', smart: 'deepseek-v4-flash' } },
     } : {}),
   };
 }

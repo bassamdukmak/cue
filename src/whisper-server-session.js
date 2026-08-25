@@ -191,7 +191,10 @@ class WhisperServerSession {
       '--request-path', requestPath,
       '--language', this.language,
       '--no-timestamps',
-      '--suppress-nst'
+      '--suppress-nst',
+      '--best-of', '1',
+      '--beam-size', '1',
+      '--no-fallback'
     ];
     if (this.threads > 0) argumentsList.push('--threads', String(this.threads));
     if (this.tinydiarize) argumentsList.push('--tinydiarize');

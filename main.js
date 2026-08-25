@@ -38,6 +38,7 @@ const { shouldScheduleAutoSuggest, resetAutoSuggestTrigger } = require('./src/au
 const { shouldCheckScreen } = require('./src/screen-triggers');
 const { fallbackTitle, writeArchive, listSessions, getSession, deleteSession, exportSession, searchSessions } = require('./src/sessions');
 const { buildNotesPrompt, parseNotes } = require('./src/notes');
+const { SAMPLE_RATE, createVoiceprintService, shouldRelabelMicTurn } = require('./src/voiceprint');
 
 let win = null;
 // Which global shortcuts cue actually holds. `globalShortcut.register` returns
@@ -65,6 +66,20 @@ let permWin = null;
 const state = { capturing: false, busy: false, transcribing: { you: false, them: false } };
 let sttDisabled = false; // set when the key can't reach any speech model (stops retry spam)
 const buffers = { you: [], them: [] };
+const VOICEPRINT_SAMPLE_BYTES = SAMPLE_RATE * 2 * 5;
+const voiceprintMicBuffer = new AudioRingBuffer(5000, SAMPLE_RATE);
+let voiceprintEnrollment = null;
+const speakerModelPath = path.join(app.getPath('userData'), 'speaker-models', 'eres2net.onnx');
+const voiceprint = createVoiceprintService({
+  store,
+  modelPath: speakerModelPath,
+  // Loading the native addon only after the complete model exists avoids a
+  // process-level ONNX abort while its download is still being written.
+  createExtractor: () => {
+    const { SpeakerEmbeddingExtractor } = require('sherpa-onnx-node');
+    return new SpeakerEmbeddingExtractor({ model: speakerModelPath, numThreads: 1, provider: 'cpu' });
+  }
+});
 const transcript = []; // { channel, text, ts } — capped at MAX_TRANSCRIPT_TURNS
 const MAX_TRANSCRIPT_TURNS = 200; // ~30–40 minutes of conversation at normal pace
 const EMPTY_TRANSCRIPT_STATUS_MS = 15000;
@@ -263,33 +278,33 @@ function getWhisperRuntime() {
 const AUTO_SUGGEST_QUIET_MS = 2500;   // silence that counts as "they finished"
 const ACTIONS_QUIET_MS = 900;
 const ACTIONS_MIN_GAP_MS = 6000;
-const ACTIONS_FAST_MIN_GAP_MS = 2000;
+const ACTIONS_FAST_MIN_GAP_MS = 0;
 let autoSuggestTimer = null;
 let actionsLastRun = 0;
 let actionsBusy = false;
 let actionsGeneration = 0;
 let actionIdSeq = 0;
 
-function startActions(minGap, turnPublishedAt) {
+function startActions(minGap, timing) {
   if (state.busy || actionsBusy) return;
   if (Date.now() - actionsLastRun < minGap) return;
   if (!store.getSettings().autoSuggest || !transcript.length) return;
   actionsLastRun = Date.now();
-  void runActions({ turnPublishedAt });
+  void runActions({ timing: { ...timing, actionsStartedAt: actionsLastRun } });
 }
 
-function scheduleAutoSuggest(turnPublishedAt) {
+function scheduleAutoSuggest(timing) {
   if (!store.getSettings().autoSuggest) return;
   if (autoSuggestTimer) clearTimeout(autoSuggestTimer);
   autoSuggestTimer = setTimeout(() => {
     autoSuggestTimer = null;
-    startActions(ACTIONS_MIN_GAP_MS, turnPublishedAt);
+    startActions(ACTIONS_MIN_GAP_MS, timing);
   }, ACTIONS_QUIET_MS);
 }
 
-function scheduleQuestionActions(turnPublishedAt) {
+function scheduleQuestionActions(timing) {
   if (autoSuggestTimer) { clearTimeout(autoSuggestTimer); autoSuggestTimer = null; }
-  startActions(ACTIONS_FAST_MIN_GAP_MS, turnPublishedAt);
+  startActions(ACTIONS_FAST_MIN_GAP_MS, timing);
 }
 
 // -------- session usage --------
@@ -326,7 +341,11 @@ function recordUsage(usage) {
   usageUpdate();
 }
 
-async function runActions({ turnPublishedAt } = {}) {
+function elapsedMs(startedAt, endedAt = Date.now()) {
+  return Number.isFinite(startedAt) ? Math.max(0, endedAt - startedAt) : null;
+}
+
+async function runActions({ timing = {} } = {}) {
   if (actionsBusy || !transcript.length) return;
   const settings = store.getSettings();
   const llm = createLLM(settings, { forceTier: 'fast' });
@@ -337,23 +356,51 @@ async function runActions({ turnPublishedAt } = {}) {
   try {
     let streamedReply = '';
     let partialActionCount = 0;
+    let firstTokenAt = null;
+    let firstActionLineAt = null;
+    let latencyLogged = false;
     const sendActions = (actions, phase) => {
       send('actions:new', {
         actions: actions.map((action) => ({ id: `action-${++actionIdSeq}`, ...action })),
       });
-      if (turnPublishedAt) {
-        recordEvent({ level: 'debug', event: 'actions_chips_sent', msg: `chips sent after ${Date.now() - turnPublishedAt}ms`, frame: 'runActions', context: { elapsedMs: Date.now() - turnPublishedAt, phase } });
-      }
+      if (latencyLogged) return;
+      latencyLogged = true;
+      const chipsSentAt = Date.now();
+      recordEvent({ level: 'debug', event: 'actions_latency', msg: 'action chip latency breakdown', frame: 'runActions', context: {
+        fields: {
+          channel: timing.channel || null,
+          phase,
+          speechEndToAudioFlushMs: elapsedMs(timing.speechEndedAt, timing.audioFlushAt),
+          audioFlushToWhisperStartMs: elapsedMs(timing.audioFlushAt, timing.whisperStartedAt),
+          whisperTranscriptionMs: elapsedMs(timing.whisperStartedAt, timing.transcriptionCompletedAt),
+          transcriptionToTurnPublishedMs: elapsedMs(timing.transcriptionCompletedAt, timing.turnPublishedAt),
+          debounceGateWaitMs: elapsedMs(timing.turnPublishedAt, timing.actionsStartedAt),
+          actionsStartToLlmRequestMs: elapsedMs(timing.actionsStartedAt, timing.llmRequestSentAt),
+          llmRequestToFirstTokenMs: elapsedMs(timing.llmRequestSentAt, firstTokenAt),
+          firstTokenToFirstActionLineMs: elapsedMs(firstTokenAt, firstActionLineAt),
+          firstActionLineToChipsSentMs: elapsedMs(firstActionLineAt, chipsSentAt),
+          speechEndToChipsSentMs: elapsedMs(timing.speechEndedAt, chipsSentAt),
+          promptChars: timing.promptChars,
+          promptEstimatedTokens: timing.promptEstimatedTokens
+        }
+      } });
     };
+    const system = buildActionsSystem(settings.persona || 'interview');
+    const actionTurn = buildActionsTurn(transcript);
+    timing.promptChars = system.length + actionTurn.length;
+    timing.promptEstimatedTokens = Math.ceil(timing.promptChars / 4);
+    timing.llmRequestSentAt = Date.now();
     const reply = await llm.stream({
-      system: buildActionsSystem(settings.persona || 'interview'),
-      turns: [{ role: 'user', text: buildActionsTurn(transcript) }],
-      maxTokens: 150,
+      system,
+      turns: [{ role: 'user', text: actionTurn }],
+      maxTokens: 96,
       onToken: (token) => {
+        if (!firstTokenAt) firstTokenAt = Date.now();
         streamedReply += token;
         const actions = parseCompleteActions(streamedReply);
         if (actions.length <= partialActionCount) return;
         partialActionCount = actions.length;
+        if (!firstActionLineAt) firstActionLineAt = Date.now();
         sendActions(actions, 'partial');
       },
       onUsage: recordUsage,
@@ -361,7 +408,10 @@ async function runActions({ turnPublishedAt } = {}) {
     if (generation !== actionsGeneration) return;
     const actions = parseActions(reply);
     // Keep existing chips when the model has no useful replacements.
-    if (actions.length || partialActionCount) sendActions(actions, 'final');
+    if (actions.length || partialActionCount) {
+      if (!firstActionLineAt) firstActionLineAt = Date.now();
+      sendActions(actions, 'final');
+    }
   } catch (error) {
     recordEvent({ level: 'warn', event: 'actions_failed', msg: error?.message || String(error), frame: 'runActions' });
   } finally {
@@ -495,22 +545,66 @@ async function archiveSession() {
   }
 }
 
-function publishTranscript(channel, text) {
+function appendMicPcm(pcm) {
+  voiceprintMicBuffer.write(pcm);
+  if (!voiceprintEnrollment) return;
+
+  let offset = 0;
+  while (voiceprintEnrollment && offset < pcm.length) {
+    const remaining = VOICEPRINT_SAMPLE_BYTES - voiceprintEnrollment.currentBytes;
+    const part = pcm.subarray(offset, offset + remaining);
+    voiceprintEnrollment.current.push(part);
+    voiceprintEnrollment.currentBytes += part.length;
+    offset += part.length;
+    if (voiceprintEnrollment.currentBytes < VOICEPRINT_SAMPLE_BYTES) continue;
+    voiceprintEnrollment.samples.push(Buffer.concat(voiceprintEnrollment.current));
+    voiceprintEnrollment.current = [];
+    voiceprintEnrollment.currentBytes = 0;
+    send('voiceprint:progress', { samples: voiceprintEnrollment.samples.length, total: 3 });
+    if (voiceprintEnrollment.samples.length === 3) void finishVoiceprintEnrollment(voiceprintEnrollment.samples);
+  }
+}
+
+async function finishVoiceprintEnrollment(samples) {
+  voiceprintEnrollment = null;
+  try {
+    const status = voiceprint.enroll(samples);
+    send('voiceprint:status', status);
+    send('status', { message: 'Voiceprint enrolled from three local samples.' });
+  } catch (error) {
+    send('voiceprint:status', voiceprint.status());
+    send('status', { message: `Voiceprint was not saved: ${error.message}` });
+  }
+}
+
+async function publishTranscript(channel, text, timing = {}) {
   if (!text || !text.trim()) return;
-  const turn = { channel, text: text.trim(), ts: Date.now() };
+  let publishedChannel = channel;
+  // The loopback channel is already a mixed remote track. Only microphone
+  // audio can identify an in-person speaker without inventing an un-mixing step.
+  if (channel === 'you' && voiceprintMicBuffer.read().length) {
+    try {
+      const verification = voiceprint.verify(voiceprintMicBuffer.read());
+      if (shouldRelabelMicTurn(verification)) publishedChannel = 'them';
+    } catch (error) {
+      console.log('[voiceprint] verify skipped:', error && error.message);
+    }
+  }
+  const turn = { channel: publishedChannel, text: text.trim(), ts: Date.now() };
+  const actionTiming = { ...timing, channel: publishedChannel, turnPublishedAt: turn.ts };
   pushTranscript(turn);
   send('transcript', turn);
-  send('stt:final', { channel, text: turn.text });
-  if (channel === 'them' && store.getSettings().autoSuggest && shouldCheckScreen(transcript)) {
+  send('stt:final', { channel: publishedChannel, text: turn.text });
+  if (publishedChannel === 'them' && store.getSettings().autoSuggest && shouldCheckScreen(transcript)) {
     void warmScreenFromTranscript();
   }
-  if (shouldScheduleAutoSuggest(channel) && store.getSettings().autoSuggest) {
-    if (channel === 'you' && !soloFallbackAnnounced) {
+  if (shouldScheduleAutoSuggest(publishedChannel) && store.getSettings().autoSuggest) {
+    if (publishedChannel === 'you' && !soloFallbackAnnounced) {
       soloFallbackAnnounced = true;
       send('status', { message: 'No meeting audio yet — using your microphone to trigger suggestions.' });
     }
-    if (channel === 'them' && isQuestionTurn(turn.text)) scheduleQuestionActions(turn.ts);
-    else scheduleAutoSuggest(turn.ts);
+    if (publishedChannel === 'them' && isQuestionTurn(turn.text)) scheduleQuestionActions(actionTiming);
+    else scheduleAutoSuggest(actionTiming);
   }
 }
 
@@ -548,7 +642,7 @@ async function startLocalWhisper(settings) {
         threads: Number(localSettings.threads) || 0,
         tinydiarize: model.tinydiarize
       },
-      onTranscript: publishTranscript,
+      onTranscript: (channel, text, timing) => void publishTranscript(channel, text, timing),
       onSpeechState: (channel, speaking, durationMs) => {
         send('vad:state', { channel, speaking, durationMs });
       },
@@ -723,7 +817,7 @@ async function flushChannel(channel) {
       return;
     }
     if (res.text && res.text.trim() && res.text.trim().length > 1 && !/^[?!.,;:\-…]+$/.test(res.text.trim())) {
-      publishTranscript(channel, res.text);
+      await publishTranscript(channel, res.text);
     }
   } catch (e) {
     console.log('[stt] error', e && e.message);
@@ -770,7 +864,7 @@ function initStreamingSTT() {
   ['you', 'them'].forEach((channel) => {
     const sttInstance = createStreamingSTT(settings, channel, {
       onTranscript: (ch, text) => {
-        publishTranscript(ch, text);
+        void publishTranscript(ch, text);
       },
       onInterim: (ch, text) => {
         send('stt:interim', { channel: ch, text });
@@ -819,6 +913,7 @@ function stopStreamingSTT() {
 // -------- audio routing (streaming or batch) --------
 function routeAudio(channel, pcmBuffer) {
   const buf = Buffer.from(pcmBuffer);
+  if (channel === 'you') appendMicPcm(buf);
 
   if (localWhisperTranscriber) {
     localWhisperTranscriber.push(channel, buf);
@@ -901,6 +996,8 @@ async function setCapturing(active) {
   stopFlushLoop();
   stopStreamingSTT();
   buffers.you = []; buffers.them = [];
+  voiceprintMicBuffer.clear();
+  voiceprintEnrollment = null;
   vad.you.reset(); vad.them.reset();
   ringBuffers.you.clear(); ringBuffers.them.clear();
   const stoppingLocalTranscriber = localWhisperTranscriber;
@@ -1157,6 +1254,20 @@ function toggleCapture() {
 
 ipcMain.handle('capture:toggle', toggleCapture);
 ipcMain.handle('capture:state', () => ({ active: state.capturing }));
+ipcMain.handle('voiceprint:status', () => voiceprint.status());
+ipcMain.handle('voiceprint:enroll', () => {
+  if (!state.capturing) throw new Error('Start listening before recording your voiceprint.');
+  if (!voiceprint.status().modelReady) throw new Error('The speaker model is still downloading. Try again when it finishes.');
+  voiceprintEnrollment = { samples: [], current: [], currentBytes: 0 };
+  send('voiceprint:progress', { samples: 0, total: 3 });
+  return { recording: true };
+});
+ipcMain.handle('voiceprint:delete', () => {
+  voiceprintEnrollment = null;
+  const status = voiceprint.delete();
+  send('voiceprint:status', status);
+  return status;
+});
 ipcMain.handle('capture:input-failed', (_e, { channel, message } = {}) => {
   if (channel !== 'you' || !state.capturing) return false;
   desiredCaptureState = false;

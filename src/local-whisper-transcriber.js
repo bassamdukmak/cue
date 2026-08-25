@@ -5,7 +5,7 @@ const CHANNELS = Object.freeze(['you', 'them']);
 const DEFAULT_DRAIN_TIMEOUT_MS = 15000;
 
 class LocalWhisperTranscriber {
-  /** Coordinate two audio channels through one sequential, persistent model session. */
+  /** Keep one persistent model session per channel so simultaneous speakers do not block each other. */
   constructor({
     sessionOptions,
     sessionFactory = (options) => new WhisperServerSession(options),
@@ -16,7 +16,8 @@ class LocalWhisperTranscriber {
     onStatus = () => {},
     onError = () => {}
   }) {
-    this.session = sessionFactory({ ...sessionOptions, onState: onStatus });
+    this.sessionOptions = sessionOptions;
+    this.sessionFactory = sessionFactory;
     this.segmenterFactory = segmenterFactory;
     this.drainTimeoutMs = drainTimeoutMs;
     this.onTranscript = onTranscript;
@@ -24,7 +25,9 @@ class LocalWhisperTranscriber {
     this.onStatus = onStatus;
     this.onError = onError;
     this.segmenters = new Map();
-    this.queueTail = Promise.resolve();
+    this.sessions = new Map();
+    this.queueTails = new Map();
+    this.speechEndedAt = new Map();
     this.pendingJobs = 0;
     this.acceptingAudio = false;
     this.discardPendingJobs = false;
@@ -32,7 +35,14 @@ class LocalWhisperTranscriber {
 
   async start() {
     this.discardPendingJobs = false;
-    await this.session.start();
+    for (const channel of CHANNELS) {
+      this.sessions.set(channel, this.sessionFactory({
+        ...this.sessionOptions,
+        onState: (status) => this.onStatus({ ...status, channel })
+      }));
+      this.queueTails.set(channel, Promise.resolve());
+    }
+    await Promise.all([...this.sessions.values()].map((session) => session.start()));
     for (const channel of CHANNELS) {
       const isRemoteAudio = channel === 'them';
       this.segmenters.set(channel, this.segmenterFactory({
@@ -43,6 +53,7 @@ class LocalWhisperTranscriber {
           silenceFrames: isRemoteAudio ? 20 : 18
         },
         onSpeechState: (speechChannel, speaking, durationMs) => {
+          if (!speaking) this.speechEndedAt.set(speechChannel, Date.now());
           this.onSpeechState(speechChannel, speaking, durationMs);
         },
         onUtterance: (utteranceChannel, pcm) => this._enqueue(utteranceChannel, pcm)
@@ -65,9 +76,11 @@ class LocalWhisperTranscriber {
     const drained = await this._drainQueue();
     if (!drained) {
       this.discardPendingJobs = true;
-      this.session.abortInferences();
+      for (const session of this.sessions.values()) session.abortInferences();
     }
-    await this.session.stop({ force: !drained });
+    await Promise.all([...this.sessions.values()].map((session) => session.stop({ force: !drained })));
+    this.sessions.clear();
+    this.queueTails.clear();
     this.segmenters.clear();
     this.onStatus({ status: 'off', message: 'Local Whisper stopped.' });
   }
@@ -75,21 +88,32 @@ class LocalWhisperTranscriber {
   forceStop() {
     this.acceptingAudio = false;
     this.discardPendingJobs = true;
-    this.session.abortInferences();
-    return this.session.stop({ force: true });
+    for (const session of this.sessions.values()) session.abortInferences();
+    return Promise.all([...this.sessions.values()].map((session) => session.stop({ force: true }))).then(() => {
+      this.sessions.clear();
+      this.queueTails.clear();
+    });
   }
 
   _enqueue(channel, pcm) {
+    const session = this.sessions.get(channel);
+    if (!session) return;
     this.pendingJobs += 1;
     this.onStatus({ status: 'transcribing', channel, pending: this.pendingJobs });
+    const timing = {
+      speechEndedAt: this.speechEndedAt.get(channel) || null,
+      audioFlushAt: Date.now()
+    };
 
-    const job = this.queueTail.then(async () => {
+    const job = (this.queueTails.get(channel) || Promise.resolve()).then(async () => {
       if (this.discardPendingJobs) return;
-      const text = await this.session.transcribe(pcm);
-      if (text) this.onTranscript(channel, text);
+      timing.whisperStartedAt = Date.now();
+      const text = await session.transcribe(pcm);
+      timing.transcriptionCompletedAt = Date.now();
+      if (text) this.onTranscript(channel, text, timing);
     });
 
-    this.queueTail = job
+    this.queueTails.set(channel, job
       .catch((error) => {
         if (!this.discardPendingJobs) this.onError(error);
       })
@@ -98,7 +122,7 @@ class LocalWhisperTranscriber {
         if (this.acceptingAudio && this.pendingJobs === 0) {
           this.onStatus({ status: 'ready', message: 'Local Whisper is ready.' });
         }
-      });
+      }));
     return job;
   }
 
@@ -106,7 +130,7 @@ class LocalWhisperTranscriber {
     let timeout = null;
     try {
       return await Promise.race([
-        this.queueTail.then(() => true),
+        Promise.all([...this.queueTails.values()]).then(() => true),
         new Promise((resolve) => {
           timeout = setTimeout(() => resolve(false), this.drainTimeoutMs);
         })
